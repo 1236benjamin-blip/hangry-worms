@@ -274,7 +274,19 @@ def sec_worms(t):
       return out})()""")
     froz = [q for q in r if q[3] < 20]
     ok(all(q[6] for q in r), "worms: drifting into an arena corner with nobody steering never kills or breaks a worm (%d drifts)" % len(r), [q for q in r if not q[6]][:4])
-    ok(not froz, "sim.js: a worm that drifts into an arena corner with nobody steering turns out of it instead of sitting there for good (%d of %d stayed wedged)" % (len(froz), len(r)), froz[:6])
+    ok(not froz, "sim.js: a worm that drifts into an arena corner with nobody steering turns out of it instead of sitting there for good", "%d of %d stayed wedged: %s" % (len(froz), len(r), froz[:6]))
+    # squeezed between another worm and a counter: a bump holds the head at the other worm's surface, and that must not put it in the counter
+    r = J(t, """(()=>{const o=AT.C,out=[],cx=o.x+o.w/2;
+      for(const ch of [0,2,3])for(const big of [0,1])for(const a of [0,0.3,-0.3]){const {s,w}=AT.mk([ch,1]),me=w[0],v=w[1];
+        AT.place(v,cx+120,o.y-18,0,90);v.stuck=1e6;                              // a frozen worm lying along the counter, too close to it to squeeze past
+        AT.place(me,cx-230,o.y-9,0,big?460:60);if(big){me.big=99;HW.follow(me)}me.inp.mx=Math.cos(a);me.inp.my=Math.sin(a);
+        let worst=-1e9,body=-1e9,nan=0;const ev=AT.run(s,3.5,()=>{if(!me.alive)return;const q=me.r-AT.clear(me.x,me.y);if(q>worst)worst=q;if(!AT.fin(me))nan++;
+          for(let k=1;k<me.pts.length;k++){const b=3-AT.clear(me.pts[k].x,me.pts[k].y);if(b>body)body=b}});
+        out.push({ch,big,a,worst,body,nan,bumps:AT.evs(ev,'bump').length,die:AT.evs(ev,'die').map(e=>e[5])})}
+      return out})()""")
+    nb = sum(1 for q in r if q["bumps"] > 0)
+    ok(nb >= len(r) // 2 and all(q["nan"] == 0 for q in r), "worms: (set-up) heads get squeezed between a frozen worm and a counter", (nb, len(r), r))
+    ok(all(q["worst"] < 0.01 and q["body"] < 0.01 for q in r) and all(c == "crash" for q in r for c in q["die"]), "worms: a head bumping another worm beside a counter is never pushed into the counter", [(q["ch"], q["big"], q["a"], q["worst"], q["body"], q["die"]) for q in r if q["worst"] >= 0.01 or q["body"] >= 0.01][:5])
 
 # ====================================================================================================
 def sec_shots(t):
@@ -541,8 +553,9 @@ def sec_diff(t):
     e, i, h = r
     print("     hits per minute on a passive human: EASY %.2f, INTERMEDIATE %.2f, HARD %.2f   (damage per minute %.0f / %.0f / %.0f, shot dead %d / %d / %d times in %.0f human-minutes each)" % (
         e["hpm"], i["hpm"], h["hpm"], e["dmgpm"], i["dmgpm"], h["dmgpm"], e["shotDeaths"], i["shotDeaths"], h["shotDeaths"], e["mins"]))
-    ok(h["hpm"] > 2 and e["hpm"] < 0.6 * h["hpm"], "difficulty: bots land clearly fewer hits per minute on a passive human on EASY (%.2f) than on HARD (%.2f)" % (e["hpm"], h["hpm"]), r)
-    ok(e["hpm"] < i["hpm"] and e["dmgpm"] < 0.6 * h["dmgpm"], "difficulty: EASY is also gentler than INTERMEDIATE (%.2f), and does well under 60%% of HARD's damage" % i["hpm"], r)
+    # measured over many runs: EASY 1.5 - 3.6, INTERMEDIATE 4.3 - 5.9, HARD 5.0 - 7.6 hits a minute
+    ok(h["hpm"] > 2 and e["hpm"] < 0.7 * h["hpm"], "difficulty: bots land clearly fewer hits per minute on a passive human on EASY than on HARD (under 70%)", r)
+    ok(e["hpm"] < i["hpm"] and e["dmgpm"] < 0.7 * h["dmgpm"] and e["shotDeaths"] < h["shotDeaths"], "difficulty: EASY is also gentler than INTERMEDIATE, does less damage than HARD and shoots fewer humans dead", r)
 
 # ====================================================================================================
 def sec_spawns(t):

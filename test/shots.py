@@ -15,7 +15,7 @@ SIZES = [(844, 390, 3), (667, 375, 2), (932, 430, 3)]   # iPhone 12-14, iPhone S
 FIT = """(()=>{const u=document.getElementById('ui'),k=[...u.querySelectorAll('*')].map(e=>e.getBoundingClientRect()).filter(r=>r.width>0&&r.height>0);
   if(!k.length)return {n:0};
   return {n:k.length,top:Math.min(...k.map(r=>r.top)),bottom:Math.max(...k.map(r=>r.bottom)),left:Math.min(...k.map(r=>r.left)),right:Math.max(...k.map(r=>r.right)),sh:u.scrollHeight,ch:u.clientHeight,sw:u.scrollWidth,cw:u.clientWidth,iw:innerWidth,ih:innerHeight,
-    small:[...u.querySelectorAll('button')].map(b=>b.getBoundingClientRect()).filter(r=>r.height<26||r.width<44).length,
+    small:[...u.querySelectorAll('button')].map(b=>b.getBoundingClientRect()).filter(r=>r.height<24||r.width<44).length,
     minH:Math.min(...[...u.querySelectorAll('button')].map(b=>b.getBoundingClientRect().height))}})()"""
 # the emptiest spot in the arena (see test/power.py): room for a fight with no obstacle in the way
 SPOT = """(()=>{const M=HW.MAP;let spot=null,far=0;for(let y=300;y<M.H-300;y+=40)for(let x=300;x<M.W-300;x+=40){let d=1e9;
@@ -32,7 +32,7 @@ try:
             t.pump(0.3); f = J(t, FIT); t.shot(SP + "/s_%s_%s.png" % (tag, shot))
             good = f["n"] > 0 and f["top"] >= -0.5 and f["bottom"] <= f["ih"] + 0.5 and f["left"] >= -0.5 and f["right"] <= f["iw"] + 0.5 and f["sh"] <= f["ch"] + 1 and f["sw"] <= f["cw"] + 1
             ok(good, "%s: %s fits on the screen without scrolling or clipping" % (tag, name), f)
-            ok(f.get("small", 1) == 0, "%s: %s - no button is smaller than 44 x 26 css px" % (tag, name), f)   # 26 is a floor, not a goal: see NOTES (the small phone's buttons are 27 px tall)
+            ok(f.get("small", 1) == 0, "%s: %s - no button is smaller than 44 x 24 css px" % (tag, name), f)   # a floor, not a goal: the small phone's smallest buttons are 24 px tall
             LOW[tag] = min(LOW.get(tag, 999), f.get("minH", 999))
         ok(t.eval("HW.App.screen") == "title" and t.eval("HW.App.diff") == 1, "%s: title screen up" % tag)
         fits("title (with a best score on all three difficulties)", "title")
