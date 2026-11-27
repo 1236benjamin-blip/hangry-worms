@@ -29,7 +29,7 @@ A slither-style arena shooter in pixel art. Static site, no build step, no image
 Balance idea: big worms hit hard and survive more hits but turn like trucks; small worms dodge and out-turn them but die to fewer hits. Jeff has the best gun and pays with no ability, tiny ammo and a double weakness.
 
 ## Rules as built
-- Eat food to gain mass (length). Head into another worm's body = death; the dead worm bursts into food.
+- Eat food to gain mass (length). Driving your head into another worm's body kills you, but not instantly: first you BUMP. The head is held at their surface (it cannot pass through), sparks fly, the screen edges flash red with TURN!, and only if you keep driving in for 0.4 s do you die. The count runs slower the more you are turned away and drains once you are clear, so a quick turn saves you and a glancing touch is only a scrape. The dead worm bursts into food.
 - Head-on head collision: the lighter worm dies; equal masses both die. A head into any body always dies.
 - Bullets knock mass out of the target; about 75% of it drops as food at the hit. A worm shot below the minimum mass dies.
 - Ammo only comes from the green crates. Each gun gets its own amount per crate.
