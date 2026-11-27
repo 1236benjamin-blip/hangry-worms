@@ -11,7 +11,7 @@
 'use strict';
 (function (HW) {
   const CFG = HW.CFG, CHARS = HW.CHARS, { angDiff, clamp } = HW.util;
-  const PREFIX = 'hangryworms-v1-', VER = 2, ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const PREFIX = 'hangryworms-v1-', VER = 3, ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const LIBS = ['https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];
   const SRI = 'sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR'; // same file on both CDNs
   const LIMIT = 15000;        // hard cap for one message (bytes; everything we send is ASCII)
@@ -229,7 +229,7 @@
   // a newcomer (or a client that fell too far behind): who you are, the whole arena in small pieces, then a snapshot
   function sendWorld(c, S, ctx) {
     c.pending = false; c.qa = []; c.qr = []; c.bk = new Set();
-    send(c, { t: 'init', pid: c.player.pid, v: VER });
+    send(c, { t: 'init', pid: c.player.pid, v: VER, d: S.diff | 0 });
     let chunk = [], z = 1;
     for (const it of S.items.values()) { chunk.push(itemRow(it)); if (chunk.length >= 150) { send(c, z ? { t: 'it', z: 1, a: chunk } : { t: 'it', a: chunk }); z = 0; chunk = []; } }
     if (chunk.length || z) send(c, z ? { t: 'it', z: 1, a: chunk } : { t: 'it', a: chunk });
@@ -356,7 +356,7 @@
   };
 
   // ---------- mirror state on the client ----------
-  Net.newMirror = function () { return { t: 0, worms: [], items: new Map(), bullets: [], zones: [], players: [], comps: [], match: { t: 300, over: false, n: 0, reason: '', next: 0 }, wmap: new Map(), bmap: new Map(), pre: null, snapN: 0, gap: 0.055, late: 0.005, delay: 0.07 }; };
+  Net.newMirror = function () { return { t: 0, worms: [], items: new Map(), bullets: [], zones: [], players: [], comps: [], match: { t: CFG.MATCH_T, over: false, n: 0, reason: '', next: 0 }, wmap: new Map(), bmap: new Map(), pre: null, snapN: 0, gap: 0.055, late: 0.005, delay: 0.07 }; };
   const arr = v => Array.isArray(v) ? v : [];
   function norm(m) { m.w = arr(m.w); m.b = arr(m.b); m.a = arr(m.a); m.r = arr(m.r); m.e = arr(m.e); if (!Array.isArray(m.z)) delete m.z; if (!Array.isArray(m.p)) delete m.p; return m; }
   const KINDS = { f: () => HW.foodSpr, a: () => null, v: () => HW.vegSpr, m: () => HW.shroomSpr };
@@ -461,7 +461,7 @@
       HW.follow(w);
     }
     for (const b of G.bullets) {
-      if (CHARS[b.ch].gun.blast) { const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy); if (v > 1) { const nv = Math.min(460, v + 380 * rdt); b.vx *= nv / v; b.vy *= nv / v; } } // rockets speed up, as in sim.js
+      const bg = CHARS[b.ch].gun; if (bg.blast) { const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy); if (v > 1) { const nv = Math.min(bg.vmax, v + bg.accel * rdt); b.vx *= nv / v; b.vy *= nv / v; } } // rockets speed up, as in sim.js
       b.x += b.vx * rdt; b.y += b.vy * rdt;
     }
     for (const z of G.zones) z.t -= dt;
@@ -472,7 +472,7 @@
       if (it.k !== 'f') continue;
       for (const w of G.worms) {
         const dx = w.x - it.x, dy = w.y - it.y; if (dx > 60 || dx < -60 || dy > 60 || dy < -60) continue;
-        const d = Math.sqrt(dx * dx + dy * dy); if (d < w.r + CHARS[w.ch].eat && d > 1) { const k = Math.min(1, 300 * dt / d); it.x += dx * k; it.y += dy * k; }
+        const d = Math.sqrt(dx * dx + dy * dy); if (d < w.r + CHARS[w.ch].eat && d > 1) { const k = Math.min(1, 260 * dt / d); it.x += dx * k; it.y += dy * k; }
       }
     }
   };

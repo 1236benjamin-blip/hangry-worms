@@ -374,6 +374,10 @@ window.HW = window.HW || {};
     sprite(SHROOM, { m: PAL.P, M: '#5b2f9e', c: PAL.l, y: PAL.p })
   ];
 
+  // double-size versions: veggies and mushrooms are always drawn big, food when it is worth a proper bite
+  const twice = c => { const d = mk(c.width * 2, c.height * 2), x = d.getContext('2d'); x.imageSmoothingEnabled = false; x.drawImage(c, 0, 0, d.width, d.height); return d; };
+  HW.vegSpr2 = HW.vegSpr.map(twice); HW.shroomSpr2 = HW.shroomSpr.map(twice);
+
   // ---------- ammo crate ----------
   HW.ammoSpr = sprite([
     '.kkkkkkkkkk.',
@@ -527,5 +531,43 @@ window.HW = window.HW || {};
     let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
     for (let i = 0; i < 26; i++) { x.fillStyle = rnd() < 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.12)'; x.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1); }
     return c;
+  })();
+
+  // floor tiles for the themed corners of the arena (index = MAP zone). All dark, so food still pops.
+  HW.zoneTiles = (function () {
+    let s = 11; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+    const tile = f => { const c = mk(64, 64); f(c.getContext('2d')); return c; };
+    const specks = (x, n, a, b) => { for (let i = 0; i < n; i++) { x.fillStyle = rnd() < 0.5 ? a : b; x.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1); } };
+    return [
+      // 0 kitchen: small steel-blue tiles
+      tile(x => {
+        for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { x.fillStyle = ['#1f2a3c', '#22304a', '#1d2838'][(i * 3 + j * 5) % 3]; x.fillRect(i * 16, j * 16, 16, 16); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(i * 16 + 15, j * 16, 1, 16); x.fillRect(i * 16, j * 16 + 15, 16, 1); x.fillStyle = 'rgba(160,200,255,0.05)'; x.fillRect(i * 16, j * 16, 15, 1); }
+        specks(x, 14, 'rgba(160,200,255,0.07)', 'rgba(0,0,0,0.15)');
+      }),
+      // 1 candy shop: purple and plum diagonal stripes
+      tile(x => {
+        x.fillStyle = '#2c1c40'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#391f48';
+        for (let j = 0; j < 64; j++) for (let i = 0; i < 64; i++) if (((i + j) >> 3) & 1) x.fillRect(i, j, 1, 1);
+        x.fillStyle = 'rgba(255,126,182,0.10)'; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) x.fillRect(i * 16 + ((j & 1) ? 12 : 4), j * 16 + 6, 2, 2);
+      }),
+      // 2 salad bar: sickly green checker with leaf specks
+      tile(x => {
+        for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { x.fillStyle = (i + j) & 1 ? '#1b3024' : '#20382a'; x.fillRect(i * 32, j * 32, 32, 32); x.fillStyle = 'rgba(0,0,0,0.2)'; x.fillRect(i * 32 + 31, j * 32, 1, 32); x.fillRect(i * 32, j * 32 + 31, 32, 1); }
+        specks(x, 22, 'rgba(140,220,110,0.10)', 'rgba(0,0,0,0.15)');
+      }),
+      // 3 grease pit: brown planks with stains
+      tile(x => {
+        for (let j = 0; j < 4; j++) {
+          x.fillStyle = ['#32241a', '#2c1f17', '#35271c', '#2a1e16'][j]; x.fillRect(0, j * 16, 64, 16); x.fillStyle = 'rgba(0,0,0,0.3)'; x.fillRect(0, j * 16 + 15, 64, 1);
+          x.fillRect((j * 23 + 9) % 64, j * 16, 1, 16); x.fillStyle = 'rgba(255,190,120,0.05)'; x.fillRect(0, j * 16, 64, 1);
+        }
+        specks(x, 18, 'rgba(255,170,80,0.08)', 'rgba(0,0,0,0.2)');
+      }),
+      // 4 food court: dim red and plum checker
+      tile(x => {
+        for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { x.fillStyle = (i + j) & 1 ? '#3a1f2a' : '#2a1d30'; x.fillRect(i * 32, j * 32, 32, 32); x.fillStyle = 'rgba(255,255,255,0.04)'; x.fillRect(i * 32, j * 32, 32, 1); x.fillRect(i * 32, j * 32, 1, 32); }
+        specks(x, 16, 'rgba(255,140,140,0.07)', 'rgba(0,0,0,0.15)');
+      })
+    ];
   })();
 })(window.HW);

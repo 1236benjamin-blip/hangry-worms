@@ -1,46 +1,64 @@
 // Hangry Worms - game simulation (host-authoritative; also used for local play)
 'use strict';
 (function (HW) {
+  const MAP = HW.MAP;
   const CFG = HW.CFG = {
-    W: 1900, H: 1900, SEG: 6, WORMS: 12, FOOD: 520, AMMO: 12, VEG: 22, SHROOM: 8,
-    MIN_MASS: 6, SHIELD: 3, BOOST_MULT: 1.65, BOOST_COST: 6,
+    W: MAP.W, H: MAP.H, SEG: 6, WORMS: 12, FOOD: 210, AMMO: 14, VEG: 15, SHROOM: 7,
+    MIN_MASS: 6, SHIELD: 4, BOOST_MULT: 1.55, BOOST_COST: 6,
     MATCH_T: 300, LIVES: 3, KILL_PTS: 20, ABIL_CD: 60, ABIL_START: 20, ZONE_T: 10, STUCK_T: 10,
-    FART_R: 76, PUKE_R: 68, SLOW_T: 3, SLOW_MULT: 0.5, TRIP_T: 7, MAX_PLAYERS: 4
+    FART_R: 76, PUKE_R: 68, SLOW_T: 4.5, SLOW_MULT: 0.5, VEG_LOSS: 0.1, TRIP_T: 10, MAX_PLAYERS: 4,
+    BIG: 3              // food worth this much or more is drawn double size
   };
+  // what a snack / meal / feast is worth (FOOD[].v in sprites.js is the class: 1, 2 or 3)
+  const FOODV = HW.FOODV = [0, 3, 5, 8];
+
+  // Bot difficulty. skill: range each bot's skill is drawn from (0..1). think / err / rest / lapse multiply
+  // thinking time, aim error, the pause between bursts and how often attention wanders. engage: furthest
+  // a bot opens fire from. dodge / abil: how reliably it sidesteps shots and uses its ability.
+  // mercy: seconds after a human's spawn shield that bots still leave them alone. warm: seconds at the
+  // start of a match in which bots do not attack humans at all. lead: how well it leads a moving target.
+  HW.DIFFS = [
+    { name: 'EASY', skill: [0.15, 0.5], think: 1.5, engage: 120, err: 1.7, rest: 2.2, lapse: 2.2, dodge: 0.4, abil: 0.35, mercy: 5, warm: 30, lead: 0 },
+    { name: 'INTERMEDIATE', skill: [0.45, 0.9], think: 1, engage: 165, err: 1, rest: 1, lapse: 1, dodge: 1, abil: 1, mercy: 2, warm: 12, lead: 0.3 },
+    { name: 'HARD', skill: [0.8, 1], think: 0.8, engage: 215, err: 0.55, rest: 0.55, lapse: 0.3, dodge: 1.3, abil: 1, mercy: 0, warm: 0, lead: 1 }
+  ];
 
   // gun: interval s, speed px/s, dmg mass, br bullet radius, range px
   const CHARS = HW.CHARS = [
     {
-      id: 'ben', name: 'BEN', big: true, startMass: 46, speed: 116, turn: 2.6, baseR: 8, eat: 24, ability: 'fart',
+      id: 'ben', name: 'BEN', big: true, startMass: 48, speed: 104, turn: 2.7, baseR: 8, eat: 30, ability: 'fart',
       colors: [['#f08a1c', '#ffd23f'], ['#e03c32', '#ffb0a8'], ['#d9d9e0', '#8d8fa0'], ['#b06a3a', '#e8b574']],
       blurb: 'BIG. SLOW. EATS FROM FAR AWAY.', stats: { size: 5, speed: 1, power: 4, rate: 2 },
-      gun: { name: 'BURGER CANNON', desc: 'SLOW SHOTS. BIG FAST BULLETS.', interval: 0.85, speed: 520, dmg: 11, br: 5, range: 430, max: 16, pickup: 8, start: 8, pellets: 1, spread: 0.02, kind: 0 }
+      gun: { name: 'BURGER CANNON', desc: 'SLOW SHOTS. BIG FAST BULLETS.', interval: 0.9, speed: 440, dmg: 14, br: 5, range: 430, max: 18, pickup: 9, start: 9, pellets: 1, spread: 0.02, kind: 0 }
     },
     {
-      id: 'chandler', name: 'CHANDLER', big: true, startMass: 40, speed: 130, turn: 2.9, baseR: 8, eat: 12, ability: 'fart',
+      id: 'chandler', name: 'CHANDLER', big: true, startMass: 40, speed: 110, turn: 2.9, baseR: 8, eat: 15, ability: 'fart',
       colors: [['#2b6fd6', '#7fc4ff'], ['#16a085', '#7dffd8'], ['#c0392b', '#ff9a8a'], ['#6c5ce7', '#c3b8ff']],
       blurb: 'BIG, BUT QUICKER THAN BEN.', stats: { size: 4, speed: 2, power: 4, rate: 2 },
-      gun: { name: 'SODA SCATTERGUN', desc: '5 PELLET BLAST. DEADLY UP CLOSE, SHORT RANGE.', interval: 0.8, speed: 430, dmg: 4, br: 2, range: 190, max: 14, pickup: 7, start: 7, pellets: 5, spread: 0.5, kind: 1 }
+      gun: { name: 'SODA SCATTERGUN', desc: '5 PELLET BLAST. DEADLY UP CLOSE, SHORT RANGE.', interval: 0.95, speed: 370, dmg: 4, br: 2, range: 185, max: 14, pickup: 7, start: 7, pellets: 5, spread: 0.5, kind: 1 }
     },
     {
-      id: 'nate', name: 'NATE', big: false, startMass: 32, speed: 164, turn: 4.6, baseR: 6, eat: 10, ability: 'puke',
+      id: 'nate', name: 'NATE', big: false, startMass: 32, speed: 130, turn: 4.4, baseR: 6, eat: 13, ability: 'puke',
       colors: [['#7ed321', '#3d8b1f'], ['#f5d547', '#b8860b'], ['#ff8fd0', '#c2409a'], ['#59d9d9', '#1f7f8b']],
       blurb: 'SMALL, FAST AND TWITCHY.', stats: { size: 2, speed: 5, power: 2, rate: 5 },
-      gun: { name: 'GUMBALL SMG', desc: 'SPRAYS FAST. BULLETS ARE SLOW AND WEAK.', interval: 0.1, speed: 290, dmg: 2.8, br: 2, range: 300, max: 150, pickup: 60, start: 70, pellets: 1, spread: 0.13, kind: 2 }
+      gun: { name: 'GUMBALL SMG', desc: 'SPRAYS FAST. BULLETS ARE SLOW AND WEAK.', interval: 0.13, speed: 250, dmg: 2.6, br: 2, range: 290, max: 110, pickup: 45, start: 50, pellets: 1, spread: 0.13, kind: 2 }
     },
     {
-      id: 'wesley', name: 'WESLEY', big: false, startMass: 32, speed: 158, turn: 4.3, baseR: 6, eat: 10, ability: 'puke',
+      id: 'wesley', name: 'WESLEY', big: false, startMass: 34, speed: 128, turn: 4.3, baseR: 6, eat: 13, ability: 'puke',
       colors: [['#9b5de5', '#ff7eb6'], ['#3ec1d3', '#f6f7d7'], ['#ff9a3c', '#ffe26a'], ['#5d6d7e', '#aeb6bf']],
       blurb: 'SMALL, FAST, SHARP SHOOTER.', stats: { size: 2, speed: 4, power: 3, rate: 3 },
-      gun: { name: 'KEBAB SKEWER', desc: 'ACCURATE. PIERCES THROUGH WORMS.', interval: 0.42, speed: 450, dmg: 8, br: 3, range: 380, max: 40, pickup: 16, start: 20, pellets: 1, spread: 0.01, pierce: 3, kind: 3 }
+      gun: { name: 'KEBAB SKEWER', desc: 'ACCURATE. PIERCES THROUGH WORMS.', interval: 0.48, speed: 390, dmg: 10, br: 3, range: 390, max: 40, pickup: 16, start: 20, pellets: 1, spread: 0.01, pierce: 3, kind: 3 }
     },
     {
-      id: 'jeff', name: 'JEFF', big: true, startMass: 46, speed: 124, turn: 2.6, baseR: 8, eat: 12, ability: null, weakPuke: true,
+      id: 'jeff', name: 'JEFF', big: true, startMass: 46, speed: 104, turn: 2.6, baseR: 8, eat: 15, ability: null, weakPuke: true,
       colors: [['#6b7a3a', '#3e4a22'], ['#8d6e63', '#4e342e'], ['#546e7a', '#263238'], ['#a67c00', '#5c4400']],
       blurb: 'NO ABILITY. FART AND PUKE BOTH KILL HIM.', stats: { size: 4, speed: 1, power: 5, rate: 1 },
-      gun: { name: 'MEATBALL ROCKET', desc: 'HUGE BLAST RADIUS. FEW ROCKETS.', interval: 1.5, speed: 260, dmg: 24, br: 4, range: 400, max: 8, pickup: 3, start: 4, pellets: 1, spread: 0.01, blast: 80, accel: 380, vmax: 460, kind: 4 }
+      gun: { name: 'MEATBALL ROCKET', desc: 'HUGE BLAST RADIUS. FEW ROCKETS.', interval: 1.7, speed: 220, dmg: 24, br: 4, range: 400, max: 8, pickup: 3, start: 4, pellets: 1, spread: 0.01, blast: 80, accel: 320, vmax: 390, kind: 4 }
     }
   ];
+
+  // worm paint jobs live with the art (sprites.js): HW.SKINS[ch].colors replaces the colours above when present
+  if (HW.SKINS) CHARS.forEach((c, i) => { if (HW.SKINS[i] && HW.SKINS[i].colors) c.colors = HW.SKINS[i].colors; });
 
   const rnd = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -50,6 +68,7 @@
   HW.segCount = mass => clamp(Math.round(9 + mass * 0.42), 9, 240);
   HW.wormR = (ch, mass) => CHARS[ch].baseR + Math.min(5, Math.floor(mass / 90));
 
+  const PT = { x: 0, y: 0, nx: 0, ny: 0 };   // scratch for MAP.push
   // shared by host + client: make body points follow the head
   HW.follow = function (w) {
     const n = HW.segCount(w.mass), p = w.pts;
@@ -61,6 +80,7 @@
     for (let i = 1; i < p.length; i++) {
       const a = p[i - 1], b = p[i]; const dx = b.x - a.x, dy = b.y - a.y; const d = Math.sqrt(dx * dx + dy * dy);
       if (d > SEG) { const k = SEG / d; b.x = a.x + dx * k; b.y = a.y + dy * k; }
+      if (MAP.push(b.x, b.y, 3, PT)) { b.x = PT.x; b.y = PT.y; }   // bodies bend round obstacles instead of cutting through the corners
       if (b.x < x0) x0 = b.x; else if (b.x > x1) x1 = b.x;
       if (b.y < y0) y0 = b.y; else if (b.y > y1) y1 = b.y;
     }
@@ -68,56 +88,94 @@
     w.r = HW.wormR(w.ch, w.mass);
   };
 
+  // ---- head movement. Shared by the host's step and by an online client predicting its own worm (net.js),
+  // so both must go through these three functions and nothing else. ----
+  // turn towards the stick. t: sim time (the mushroom weave runs on it)
+  HW.turnHead = function (w, I, dt, t, isBot) {
+    if (I.mx * I.mx + I.my * I.my <= 0.04) return;
+    let ta = Math.atan2(I.my, I.mx); if (w.trip > 0) ta += Math.sin(t * 3 + w.id) * (isBot ? 0.9 : 0.45);   // mushrooms: you weave
+    const mt = CHARS[w.ch].turn * dt * (w.slow > 0 ? 0.8 : 1);
+    w.ang += clamp(angDiff(ta, w.ang), -mt, mt);
+  };
+  // px/s right now (w.boosting must already be decided)
+  HW.headSpeed = function (w) {
+    if (w.stuck > 0) return 0;
+    return CHARS[w.ch].speed * (w.boosting ? CFG.BOOST_MULT : 1) * (w.slow > 0 ? CFG.SLOW_MULT : 1);
+  };
+  // advance the head. Walls and obstacles do not kill: the worm slides and its nose is nudged along the surface.
+  HW.moveHead = function (w, sp, dt) {
+    const nx = w.x + Math.cos(w.ang) * sp * dt, ny = w.y + Math.sin(w.ang) * sp * dt;
+    w.x = clamp(nx, w.r, CFG.W - w.r); w.y = clamp(ny, w.r, CFG.H - w.r);
+    if (w.x !== nx) { const tg = Math.sin(w.ang) >= 0 ? Math.PI / 2 : -Math.PI / 2; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
+    if (w.y !== ny) { const tg = Math.cos(w.ang) >= 0 ? 0 : Math.PI; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
+    if (MAP.push(w.x, w.y, w.r, PT)) {
+      w.x = clamp(PT.x, w.r, CFG.W - w.r); w.y = clamp(PT.y, w.r, CFG.H - w.r);
+      const side = Math.cos(w.ang) * -PT.ny + Math.sin(w.ang) * PT.nx >= 0 ? 1 : -1, tg = Math.atan2(PT.nx * side, -PT.ny * side);
+      w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt);
+    }
+  };
+
   function newState() {
     return { t: 0, worms: [], items: new Map(), bullets: [], zones: [], players: [], nextId: 1, events: [], adds: [], rems: [], respawns: [], botTimer: 0,
       comps: [], nextCid: 1, match: { t: CFG.MATCH_T, over: false, overT: 0, n: 1, reason: '' }, autoNext: 0 };
   }
 
-  function Sim() {
+  // opt.diff: bot difficulty, an index into HW.DIFFS (default 1)
+  function Sim(opt) {
     const S = this.S = newState();
+    S.diff = clamp((opt && opt.diff) | 0, 0, HW.DIFFS.length - 1); if (!opt || opt.diff === undefined) S.diff = 1;
     for (let i = 0; i < CFG.FOOD; i++) this.addFood();
-    for (let i = 0; i < CFG.AMMO; i++) this.addItem('a', 0, rnd(80, CFG.W - 80), rnd(80, CFG.H - 80), 0);
-    for (let i = 0; i < CFG.VEG; i++) this.addItem('v', (Math.random() * 5) | 0, rnd(120, CFG.W - 120), rnd(120, CFG.H - 120), 0);
-    for (let i = 0; i < CFG.SHROOM; i++) this.addItem('m', (Math.random() * 2) | 0, rnd(120, CFG.W - 120), rnd(120, CFG.H - 120), 0);
+    for (let i = 0; i < CFG.AMMO; i++) this.dropItem('a');
+    for (let i = 0; i < CFG.VEG; i++) this.dropItem('v');
+    for (let i = 0; i < CFG.SHROOM; i++) this.dropItem('m');
     S.counts = { f: CFG.FOOD, a: CFG.AMMO, v: CFG.VEG, m: CFG.SHROOM };
     this.fillBots();
   }
   const P = Sim.prototype;
+  // a crate, veggie or mushroom somewhere free. Nearly half the veggies turn up in the salad bar.
+  P.dropItem = function (k) {
+    const p = MAP.spot(k === 'a' ? 80 : 120, 26, k === 'v' && Math.random() < 0.45 ? MAP.zones[2] : null);
+    return this.addItem(k, k === 'v' ? (Math.random() * HW.vegSpr.length) | 0 : k === 'm' ? (Math.random() * HW.shroomSpr.length) | 0 : 0, p.x, p.y, 0);
+  };
 
   P.ev = function (k, x, y) { const e = [k, Math.round(x), Math.round(y)]; for (let i = 3; i < arguments.length; i++) e.push(arguments[i]); this.S.events.push(e); };
 
   P.addItem = function (k, type, x, y, v) {
-    const S = this.S; const it = { id: S.nextId++, k, type, x: clamp(x, 14, CFG.W - 14), y: clamp(y, 14, CFG.H - 14), v };
+    const S = this.S; x = clamp(x, 14, CFG.W - 14); y = clamp(y, 14, CFG.H - 14);
+    if (MAP.push(x, y, 12, PT)) { x = clamp(PT.x, 14, CFG.W - 14); y = clamp(PT.y, 14, CFG.H - 14); }   // nothing lands inside an obstacle
+    const it = { id: S.nextId++, k, type, x, y, v };
     S.items.set(it.id, it); S.adds.push(it); if (S.counts) S.counts[k]++; return it;
   };
   P.remItem = function (it) { const S = this.S; if (S.items.delete(it.id)) { S.rems.push(it.id); S.counts[it.k]--; } };
   P.addFood = function (x, y, v) {
     let type;
-    if (v === undefined) { type = (Math.random() * HW.FOOD.length) | 0; v = HW.FOOD[type].v; }
+    if (v === undefined) { type = (Math.random() * HW.FOOD.length) | 0; v = FOODV[HW.FOOD[type].v]; }
     else {
       // choose a sprite that suits the value
-      const want = v >= 3 ? 3 : v >= 2 ? 2 : 1; let tries = 0;
+      const want = v >= 7 ? 3 : v >= 4 ? 2 : 1; let tries = 0;
       do { type = (Math.random() * HW.FOOD.length) | 0; } while (HW.FOOD[type].v !== want && ++tries < 12);
     }
-    return this.addItem('f', type, x === undefined ? rnd(30, CFG.W - 30) : x, y === undefined ? rnd(30, CFG.H - 30) : y, v);
+    if (x === undefined) { const p = MAP.spot(30, 14); x = p.x; y = p.y; }
+    return this.addItem('f', type, x, y, v);
   };
   // scatter `total` mass as food items around a point
   P.spill = function (x, y, total, spread) {
     while (total >= 1) {
-      const v = total >= 9 ? 3 : total >= 4 ? 2 : 1; total -= v;
+      const v = total >= 10 ? 5 : total >= 3 ? 3 : 1; total -= v;
       const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * spread;
       this.addFood(x + Math.cos(a) * d, y + Math.sin(a) * d, v);
     }
   };
 
-  P.spawnPos = function () {
+  P.spawnPos = function (human) {
     const S = this.S; let best = null, bestD = -Infinity; // -Infinity: a try next to a zone scores below zero and must still be usable
-    for (let t = 0; t < 14; t++) {
-      const x = rnd(200, CFG.W - 200), y = rnd(200, CFG.H - 200); let d = 1e9;
+    const tries = human ? 40 : 14, room = human ? 460 : 300;   // a human is dropped somewhere quiet
+    for (let t = 0; t < tries; t++) {
+      const sp = MAP.spot(200, 40), x = sp.x, y = sp.y; let d = 1e9;
       for (const w of S.worms) { if (!w.alive) continue; for (let i = 0; i < w.pts.length; i += 6) { const q = (w.pts[i].x - x) ** 2 + (w.pts[i].y - y) ** 2; if (q < d) d = q; } }
       for (const z of S.zones) { const q = (z.x - x) ** 2 + (z.y - y) ** 2 - 200 * 200; if (q < d) d = q; }
       if (d > bestD) { bestD = d; best = { x, y }; }
-      if (d > 300 * 300) break;
+      if (d > room * room) break;
     }
     return best;
   };
@@ -139,7 +197,7 @@
   };
 
   P.spawnWorm = function (ch, pid) {
-    const S = this.S, C = CHARS[ch], pos = this.spawnPos();
+    const S = this.S, C = CHARS[ch], pos = this.spawnPos(pid >= 0);
     const ang = Math.atan2(CFG.H / 2 - pos.y, CFG.W / 2 - pos.x) + rnd(-0.8, 0.8);
     let variant;
     if (pid < 0) variant = this.pickVariant(ch, null);
@@ -148,12 +206,13 @@
       id: S.nextId++, ch, variant, pid, isBot: pid < 0, x: pos.x, y: pos.y, ang, aim: ang,
       mass: C.startMass, pts: [], r: C.baseR, alive: true, shield: CFG.SHIELD, ammo: C.gun.start, cd: 1, // cd 1: no shot (and so no lost shield) in the first second, even with fire held
       abil: C.ability ? CFG.ABIL_START : 0, stuck: 0, pukeImm: 0, slow: 0, trip: 0, boosting: false, boostAcc: 0, kills: 0,
+      mercy: pid >= 0 ? CFG.SHIELD + HW.DIFFS[S.diff].mercy : 0,   // bots leave a freshly spawned human alone for this long (see bots.js)
       inp: { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false }, bot: null
     };
     const n = HW.segCount(w.mass);
     for (let i = 0; i < n; i++) w.pts.push({ x: pos.x - Math.cos(ang) * i * 2, y: pos.y - Math.sin(ang) * i * 2 });
     HW.follow(w);
-    if (w.isBot) w.bot = { think: Math.random() * 0.2, steer: ang, wander: ang, fireT: 0, skill: rnd(0.5, 1), aimErr: 0, burst: 0, panic: 0, abT: 0, abArm: false, mx: 0, my: 0 };
+    if (w.isBot) { const D = HW.DIFFS[S.diff]; w.bot = { think: Math.random() * 0.2, steer: ang, wander: ang, fireT: 0, skill: rnd(D.skill[0], D.skill[1]), aimErr: 0, burst: 0, panic: 0, abT: 0, abArm: false, abNo: 0, mx: 0, my: 0, sx: pos.x, sy: pos.y, sT: 1.5, esc: 0, escA: 0 }; }
     if (!w.isBot) for (const o of S.worms) if (o.alive && o.isBot && o.ch === ch && o.variant === w.variant) o.variant = this.pickVariant(ch, o); // the human keeps their colour
     S.worms.push(w); this.ev('spawn', w.x, w.y, w.id);
     return w;
@@ -221,12 +280,13 @@
   // ----- combat -----
   P.kill = function (w, killer, cause) {
     if (!w.alive) return; const S = this.S; w.alive = false;
-    const total = w.mass * 0.8 + 4, n = Math.min(w.pts.length, 46), per = total / n;
+    // the body turns into a trail of meals: a few big pieces rather than a carpet of crumbs
+    const total = w.mass * 0.8 + 4, n = Math.max(1, Math.min(w.pts.length, 40, Math.round(total / 5))), per = total / n;
     let acc = 0;
     for (let i = 0; i < n; i++) {
       acc += per; const v = Math.floor(acc); if (v < 1) continue; acc -= v;
       const p = w.pts[Math.floor(i * w.pts.length / n)];
-      let rem = v; while (rem > 0) { const vv = rem >= 3 ? 3 : rem; rem -= vv; this.addFood(p.x + rnd(-9, 9), p.y + rnd(-9, 9), vv); }
+      this.addFood(p.x + rnd(-7, 7), p.y + rnd(-7, 7), v);
     }
     if (killer && killer !== w && killer.alive) { killer.kills++; if (killer.comp && cause !== 'left') { killer.comp.kills++; killer.comp.score = Math.round(killer.comp.peak) + CFG.KILL_PTS * killer.comp.kills; } }
     if (w.pid >= 0 && w.comp && cause !== 'left') { w.comp.lives = Math.max(0, w.comp.lives - 1); if (w.comp.lives <= 0) w.comp.out = true; }
@@ -254,7 +314,11 @@
     for (const w of S.worms) {
       if (!w.alive || w.id === b.owner || w.shield > 0) continue;
       const q = this.nearestSeg(w, b.x, b.y, R + w.r); const d = Math.sqrt(q) - w.r;
-      if (d < R) { const f = 1 - clamp(d / R, 0, 1) * 0.65; const p = this.hitPoint(w, b.x, b.y); this.damage(w, g.dmg * f, S.worms.find(o => o.id === b.owner), p.x, p.y); }
+      if (d < R) {
+        const f = 1 - clamp(d / R, 0, 1) * 0.65, p = this.hitPoint(w, b.x, b.y);
+        if (!MAP.los(b.x, b.y, p.x, p.y, 0) && !MAP.los(b.x, b.y, w.x, w.y, 0)) continue;   // behind a counter: safe
+        this.damage(w, g.dmg * f, S.worms.find(o => o.id === b.owner), p.x, p.y);
+      }
     }
     this.ev('boom', b.x, b.y, R);
   };
@@ -263,7 +327,7 @@
   P.fire = function (w) {
     const S = this.S, g = CHARS[w.ch].gun;
     // w.cd sits in (-dt, 0] when a shot is due: carry the remainder so the average cadence is exactly g.interval
-    w.cd = g.interval + (w.cd > -0.05 ? w.cd : 0); w.ammo--; w.shield = 0;
+    w.cd = g.interval + (w.cd > -0.05 ? w.cd : 0); w.ammo--; w.shield = 0; w.mercy = 0;
     const mz = w.r + 6 + HW.gunSpr[w.ch].len, ca = Math.cos(w.aim), sa = Math.sin(w.aim);
     const mx = w.x + ca * mz, my = w.y + sa * mz;
     // Bullets leave from the muzzle, which is well in front of the head. If something is already
@@ -276,11 +340,13 @@
         const lim = g.br + o.r; if (this.nearestSeg(o, x, y, lim) <= lim * lim) { bx = x - ca * 2; by = y - sa * 2; break scan; }
       }
     }
+    if (!MAP.los(w.x, w.y, bx, by, g.br * 0.5)) { bx = w.x + ca * w.r * 0.5; by = w.y + sa * w.r * 0.5; }   // muzzle poked into an obstacle: the shot starts at the head and hits it
+    const wob = w.trip > 0 ? Math.sin(S.t * 5 + w.id) * 0.35 : 0;   // mushrooms: the gun sways
     // rockets speed up as they fly, so their lifetime is worked out from the range they should cover
     let life = g.range / g.speed;
     if (g.accel) { const t1 = (g.vmax - g.speed) / g.accel, d1 = g.speed * t1 + 0.5 * g.accel * t1 * t1; life = g.range >= d1 ? t1 + (g.range - d1) / g.vmax : (Math.sqrt(g.speed * g.speed + 2 * g.accel * g.range) - g.speed) / g.accel; }
     for (let i = 0; i < g.pellets; i++) {
-      const a = w.aim + (g.pellets > 1 ? (i / (g.pellets - 1) - 0.5) * g.spread + rnd(-0.04, 0.04) : rnd(-g.spread, g.spread));
+      const a = w.aim + wob + (g.pellets > 1 ? (i / (g.pellets - 1) - 0.5) * g.spread + rnd(-0.04, 0.04) : rnd(-g.spread, g.spread));
       const sp = g.speed * (g.pellets > 1 ? rnd(0.85, 1.1) : 1);
       S.bullets.push({ id: S.nextId++, ch: w.ch, owner: w.id, x: bx, y: by, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, hit: null, pierce: g.pierce || 0, c: (Math.random() * 5) | 0 });
     }
@@ -288,7 +354,7 @@
   };
   P.useAbility = function (w) {
     const S = this.S, C = CHARS[w.ch]; if (!C.ability || w.abil > 0 || w.stuck > 0) return;
-    w.abil = CFG.ABIL_CD; w.shield = 0;
+    w.abil = CFG.ABIL_CD; w.shield = 0; w.mercy = 0;
     if (C.ability === 'fart') {
       // comes out the back: a little behind the head so it guards you (see NOTES)
       const i = Math.min(w.pts.length - 1, 16), p = w.pts[i];
@@ -310,7 +376,7 @@
       for (let i = 0; i < o.pts.length; i += 3) {
         const dx = o.pts[i].x - w.x, dy = o.pts[i].y - w.y, d = Math.sqrt(dx * dx + dy * dy); if (d > R) continue;
         const da = Math.abs(angDiff(Math.atan2(dy, dx), w.ang)); if (da > 0.95) continue;
-        const s = d * (1 + da * 1.5) * (i === 0 ? 0.8 : 1); if (s < bs) { bs = s; best = Math.atan2(dy, dx); }
+        const s = d * (1 + da * 1.5) * (i === 0 ? 0.8 : 1); if (s < bs && MAP.los(w.x, w.y, o.pts[i].x, o.pts[i].y, 0)) { bs = s; best = Math.atan2(dy, dx); }
       }
     }
     return best;
@@ -343,33 +409,22 @@
       if (!w.alive) continue;
       if (w.bot) HW.botThink(this, w, dt);
       const C = CHARS[w.ch], I = w.inp;
-      // steering
-      const mm = I.mx * I.mx + I.my * I.my;
-      if (mm > 0.04) {
-        let ta = Math.atan2(I.my, I.mx); if (w.trip > 0 && w.bot) ta += Math.sin(S.t * 3 + w.id) * 0.9;
-        const d = angDiff(ta, w.ang), mt = C.turn * dt * (w.slow > 0 ? 0.8 : 1);
-        w.ang += clamp(d, -mt, mt);
-      }
+      HW.turnHead(w, I, dt, S.t, !!w.bot);
       // aim
       if (I.ax * I.ax + I.ay * I.ay > 0.09) w.aim = Math.atan2(I.ay, I.ax);
       else { let a = null; if (I.auto && I.fire) a = this.autoAim(w); if (a === null) a = w.ang; w.aim += clamp(angDiff(a, w.aim), -14 * dt, 14 * dt); }
       // timers
       if (w.shield > 0) w.shield -= dt; if (w.cd > 0) w.cd -= dt; if (w.abil > 0) w.abil -= dt;
-      if (w.slow > 0) w.slow -= dt; if (w.trip > 0) w.trip -= dt; if (w.pukeImm > 0) w.pukeImm -= dt;
+      if (w.slow > 0) w.slow -= dt; if (w.trip > 0) w.trip -= dt; if (w.pukeImm > 0) w.pukeImm -= dt; if (w.mercy > 0) w.mercy -= dt;
       // move
-      let sp = C.speed;
       w.boosting = !!(I.boost && w.mass > CFG.MIN_MASS + 4 && w.stuck <= 0);
       if (w.boosting) {
-        sp *= CFG.BOOST_MULT; const c = CFG.BOOST_COST * dt; w.mass -= c; w.boostAcc += c * 0.6;
+        const c = CFG.BOOST_COST * dt; w.mass -= c; w.boostAcc += c * 0.6;
         if (w.boostAcc >= 1) { w.boostAcc -= 1; const tl = w.pts[w.pts.length - 1]; this.addFood(tl.x + rnd(-4, 4), tl.y + rnd(-4, 4), 1); }
       }
-      if (w.slow > 0) sp *= CFG.SLOW_MULT;
-      if (w.stuck > 0) { w.stuck -= dt; sp = 0; }
-      const nx = w.x + Math.cos(w.ang) * sp * dt, ny = w.y + Math.sin(w.ang) * sp * dt;
-      w.x = clamp(nx, w.r, CFG.W - w.r); w.y = clamp(ny, w.r, CFG.H - w.r);
-      // walls don't kill: the worm slides and its nose is nudged along the wall
-      if (w.x !== nx) { const tg = Math.sin(w.ang) >= 0 ? Math.PI / 2 : -Math.PI / 2; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
-      if (w.y !== ny) { const tg = Math.cos(w.ang) >= 0 ? 0 : Math.PI; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
+      const sp = HW.headSpeed(w);
+      if (w.stuck > 0) w.stuck -= dt;
+      HW.moveHead(w, sp, dt);
       HW.follow(w);
       // fire / ability
       if (I.fire && w.cd <= 0) { if (w.ammo > 0) this.fire(w); else if (!w.dryT || S.t - w.dryT > 0.5) { w.dryT = S.t; this.ev('dry', w.x, w.y, w.id); } }
@@ -385,9 +440,9 @@
         const d = Math.sqrt(dx * dx + dy * dy);
         if (it.k === 'f') {
           const er = w.r + CHARS[w.ch].eat;
-          if (d < w.r + 3) { eatList.push(it, w); break; }
-          if (d < er) { const k = Math.min(1, 300 * dt / d); it.x += dx * k; it.y += dy * k; }
-        } else if (d < w.r + (it.k === 'a' ? 9 : 7)) { eatList.push(it, w); break; }
+          if (d < w.r + (it.v >= CFG.BIG ? 7 : 3)) { eatList.push(it, w); break; }
+          if (d < er) { const k = Math.min(1, 260 * dt / d); it.x += dx * k; it.y += dy * k; }
+        } else if (d < w.r + (it.k === 'a' ? 9 : 11)) { eatList.push(it, w); break; }
       }
     }
     for (let i = 0; i < eatList.length; i += 2) {
@@ -395,17 +450,21 @@
       this.remItem(it);
       if (it.k === 'f') { w.mass += it.v; this.ev('eat', it.x, it.y, w.id, it.v); }
       else if (it.k === 'a') { const g = CHARS[w.ch].gun; w.ammo = Math.min(g.max, w.ammo + g.pickup); this.ev('ammo', it.x, it.y, w.id); S.respawns.push({ k: 'a', t: 7 }); }
-      else if (it.k === 'v') { if (w.shield <= 0) { w.slow = CFG.SLOW_T; this.ev('veg', it.x, it.y, w.id); } S.respawns.push({ k: 'v', t: 5 }); }
+      else if (it.k === 'v') {
+        // veggies: slow, and you shrink (the mass is gone, not dropped)
+        if (w.shield <= 0) { const loss = Math.max(0, Math.min(w.mass - CFG.MIN_MASS - 2, 3 + w.mass * CFG.VEG_LOSS)); w.mass -= loss; w.slow = CFG.SLOW_T; this.ev('veg', it.x, it.y, w.id, Math.round(loss)); }
+        S.respawns.push({ k: 'v', t: 5 });
+      }
       else if (it.k === 'm') { if (w.shield <= 0) { w.trip = CFG.TRIP_T; this.ev('shroom', it.x, it.y, w.id); } S.respawns.push({ k: 'm', t: 8 }); }
     }
     for (let i = S.respawns.length - 1; i >= 0; i--) {
       const r = S.respawns[i]; r.t -= dt; if (r.t > 0) continue; S.respawns.splice(i, 1);
-      this.addItem(r.k, r.k === 'v' ? (Math.random() * 5) | 0 : r.k === 'm' ? (Math.random() * 2) | 0 : 0, rnd(100, CFG.W - 100), rnd(100, CFG.H - 100), 0);
+      this.dropItem(r.k);
     }
-    if (S.counts.f < CFG.FOOD && Math.random() < dt * 14) this.addFood();
-    if (S.counts.f > 1100) {
+    if (S.counts.f < CFG.FOOD && Math.random() < dt * 5) this.addFood();
+    if (S.counts.f > 520) {
       // too much litter: clear the oldest crumbs first, then anything, so the cap always holds
-      let n = 0; for (const it of S.items.values()) { if (it.k === 'f' && it.v === 1) { this.remItem(it); if (++n > 20) break; } }
+      let n = 0; for (const it of S.items.values()) { if (it.k === 'f' && it.v < CFG.BIG) { this.remItem(it); if (++n > 20) break; } }
       if (n === 0) for (const it of S.items.values()) { if (it.k === 'f') { this.remItem(it); if (++n > 20) break; } }
     }
 
@@ -419,7 +478,7 @@
         const m = a.r + b.r;
         if (a.x < b.bx0 - m || a.x > b.bx1 + m || a.y < b.by0 - m || a.y > b.by1 + m) continue;
         // the part of b that a's head is closest to decides what was hit: b's head (0) or its body
-        const p = b.pts; let hit = -1, hq = (a.r * 0.78 + b.r * 0.82) ** 2;
+        const p = b.pts; let hit = -1, hq = (a.r * 0.7 + b.r * 0.78) ** 2;   // a graze is forgiven: the circles must really overlap
         for (let i = 0; i < p.length; i++) { const dx = p[i].x - a.x, dy = p[i].y - a.y, q = dx * dx + dy * dy; if (q < hq) { hq = q; hit = i; } }
         if (hit >= 0) touch.push(a, b, hit);
       }
@@ -463,6 +522,7 @@
       for (let s = 0; s < steps && !dead; s++) {
         b.x += b.vx * dt / steps; b.y += b.vy * dt / steps;
         if (b.x < 0 || b.y < 0 || b.x > CFG.W || b.y > CFG.H) { dead = true; break; }
+        if (MAP.hit(b.x, b.y, g.br * 0.5)) { b.x -= b.vx * dt / steps; b.y -= b.vy * dt / steps; dead = true; this.ev('clang', b.x, b.y); break; }   // stopped by a counter, table...
         for (const w of S.worms) {
           if (!w.alive || w.id === b.owner || w.shield > 0) continue;
           if (b.hit && b.hit.indexOf(w.id) >= 0) continue;

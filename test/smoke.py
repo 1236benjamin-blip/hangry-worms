@@ -1,7 +1,7 @@
 import sys, time, os
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
-SP = sys.argv[1]; URL = "http://127.0.0.1:8377/index.html"
+SP = sys.argv[1]; URL = os.environ.get("HW_URL", "http://127.0.0.1:8377/index.html")
 b = Browser(profile=SP + "/prof")
 try:
     t = b.tab(); t.device(844, 390, 3, True, True); t.goto(URL, 2.0)

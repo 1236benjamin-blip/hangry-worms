@@ -3,7 +3,7 @@ Usage: python3 test/play.py /tmp/out   (static server on :8377, see NOTES.md). E
 import sys, time, os, json
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
-SP = sys.argv[1]; URL = "http://127.0.0.1:8377/index.html"
+SP = sys.argv[1]; URL = os.environ.get("HW_URL", "http://127.0.0.1:8377/index.html")
 b = Browser(profile=SP + "/prof")
 ME = "HW.App.locals[0].me"
 FAILS = []

@@ -13,7 +13,7 @@ input round trip, leaving, signalling loss, error messages for bad codes, stale 
 import sys, time, os, json, math
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
-SP = sys.argv[1]; URL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].startswith("http") else "http://127.0.0.1:8377/index.html"
+SP = sys.argv[1]; URL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2].startswith("http") else os.environ.get("HW_URL", "http://127.0.0.1:8377/index.html")
 ONLY = sys.argv[-1] if sys.argv[-1] in ("a", "b") else ""
 FAILS = []
 def check(name, ok, detail=""):
@@ -32,7 +32,7 @@ window.TH = (() => {
       close() { if (this.open) { this.open = false; if (this.h.close) this.h.close(); } }, recv(m) { this.h.data(m); } };
   }
   function join(X, ch, hello) {
-    const conn = mkConn(), c = X.accept(conn); if (c) conn.recv(hello || { t: 'hello', ch, v: 2 });
+    const conn = mkConn(), c = X.accept(conn); if (c) conn.recv(hello || { t: 'hello', ch, v: 3 });
     const k = { conn, c, G: Net.newMirror(), pid: -1, first: 0, ev: 0, other: [], zs: 0, seq: 0 }; X.cl.push(k); return k;
   }
   function setup(n) {
@@ -162,7 +162,7 @@ window.TH = (() => {
     const X = setup(1), k = X.cl[0], S = X.sim.S; let threw = 0; for (let i = 0; i < 5; i++) tick(X);
     const before = S.players.length, junk = [null, undefined, 5, 'str', true, [], [1, 2], {}, { t: 'i' }, { t: 'i', m: 'x' }, { t: 'i', m: {} }, { t: 'i', m: { length: 4 } }, { t: 'i', m: [] },
       { t: 'i', m: [Infinity, -Infinity, NaN, 1e308], f: 'zz', a: 1e308 }, { t: 'i', m: ['a', {}, [], null], f: {}, a: 'x' }, { t: 'i', m: [5, -5, 2, -2], f: -1, a: -5 }, { t: 'i', m: [0.5, 0.5, 0, 0], f: 1e99, a: 2.5 },
-      { t: 'i', m: [0, 0, 0, 0], f: 8, a: null }, { t: 'hello', ch: 3, v: 2 }, { t: 'hello' }, { t: 'k' }, { t: 'k', c: 'x' }, { t: 'k', c: 1e999 }, { t: 'zzz', m: [1] }, { t: 's', w: [[1, 2, 3]] }, { t: 'init', pid: 0 }, { t: 'it', z: 1, a: [] },
+      { t: 'i', m: [0, 0, 0, 0], f: 8, a: null }, { t: 'hello', ch: 3, v: 3 }, { t: 'hello' }, { t: 'k' }, { t: 'k', c: 'x' }, { t: 'k', c: 1e999 }, { t: 'zzz', m: [1] }, { t: 's', w: [[1, 2, 3]] }, { t: 'init', pid: 0 }, { t: 'it', z: 1, a: [] },
       { t: 'i', m: [1, 0, 0, 0], f: 3, a: 1, extra: 'x'.repeat(5000) }, { __proto__: null, t: 'i' }, { t: { toString() { return 'i'; } } }];
     for (const m of junk) { try { k.conn.recv(m); } catch (e) { threw++; } tick(X); if (!sane(X)) return { failedOn: JSON.stringify(m) }; }
     const p = playerOf(X, k), out = { threw, players: S.players.length === before, sane: sane(X), stillIn: !!p, seq: k.c.seq, sync: clean(diff(X, k)) };

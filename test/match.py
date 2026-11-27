@@ -2,7 +2,7 @@
 import sys, os, json
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
-SP = sys.argv[1]; URL = "http://127.0.0.1:8377/index.html"; FAIL = []
+SP = sys.argv[1]; URL = os.environ.get("HW_URL", "http://127.0.0.1:8377/index.html"); FAIL = []
 def ok(c, msg, extra=""):
     print(("ok   " if c else "FAIL ") + msg, extra)
     if not c: FAIL.append(msg)

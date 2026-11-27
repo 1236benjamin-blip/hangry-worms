@@ -2,7 +2,7 @@
 Used to test Hangry Worms in headless Chrome (no Node / Playwright on this machine)."""
 import base64, json, os, socket, struct, subprocess, time, urllib.request
 
-CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+CHROME = os.environ.get("HW_CHROME") or next((p for p in ("/opt/pw-browsers/chromium", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/chromium", "/usr/bin/google-chrome") if os.path.exists(p)), "chromium")
 
 class WS:
     def __init__(self, url):
@@ -82,7 +82,7 @@ class Tab:
 class Browser:
     def __init__(self, port=None, profile="/tmp/hw-prof", extra=()):
         port = port or int(os.environ.get("HW_PORT", "9377")); self.port = port
-        self.p = subprocess.Popen([CHROME, "--headless=new", "--remote-debugging-port=%d" % port, "--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check",
+        self.p = subprocess.Popen([CHROME, "--headless=new", "--no-sandbox", "--remote-debugging-port=%d" % port, "--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check",
                                    "--autoplay-policy=no-user-gesture-required", "--mute-audio", "--window-size=1280,720", "--disable-background-timer-throttling",
                                    "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--remote-allow-origins=*"] + list(extra) + ["about:blank"],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

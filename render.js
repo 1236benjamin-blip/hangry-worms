@@ -1,10 +1,10 @@
 // Hangry Worms - rendering (low-res pixel canvas, scaled up by CSS)
 'use strict';
 (function (HW) {
-  const CFG = HW.CFG, CHARS = HW.CHARS, text = HW.text;
+  const CFG = HW.CFG, CHARS = HW.CHARS, MAP = HW.MAP, text = HW.text;
   const R = HW.Render = { W: 640, H: 360, scale: 2, target: 270 };
   R.setTarget = function (t) { if (R.target !== t) { R.target = t; R.resize(); if (HW.Input) HW.Input.layout(); } };
-  let cv, cx, vc, vx, pattern;
+  let cv, cx, vc, vx, pattern, zonePat;
 
   R.init = function (canvas) {
     cv = R.canvas = canvas; cx = R.ctx = cv.getContext('2d', { alpha: false });
@@ -144,6 +144,117 @@
   }
 
   const GUMC = ['#ff7eb6', '#4cc9f0', '#ffd23f', '#b5e61d', '#ff9a3c'];
+
+  // ---------- arena art: floor zones, graffiti, stains, obstacles (all drawn once into small canvases) ----------
+  // colours per zone: [main, dark, light]. 0 kitchen, 1 candy shop, 2 salad bar, 3 grease pit, 4 food court
+  const THEME = [['#8d99ae', '#5b667a', '#c9d2e0'], ['#ff7eb6', '#b84a86', '#ffc0dc'], ['#5cc04a', '#2f7d32', '#a8e88a'], ['#d9781f', '#8a4b25', '#f2b46a'], ['#e03c32', '#9c2020', '#ff9a8a']];
+  const ZNAME = ['KITCHEN', 'CANDY SHOP', 'SALAD BAR', 'GREASE PIT', 'FOOD COURT'];
+  const PAINT = ['#ffffff', '#ffd23f', '#ff7eb6', '#4cc9f0', '#b5e61d', '#ff9a3c', '#ff5a4d'];
+  let decals = null;
+  function paintText(str, scale, ang, col, alpha) {
+    const w = HW.textW(str, scale), h = 7 * scale, ca = Math.abs(Math.cos(ang)), sa = Math.abs(Math.sin(ang));
+    const cw = Math.ceil(w * ca + h * sa) + 4, ch = Math.ceil(w * sa + h * ca) + 4, c = HW.mk(cw, ch), x = c.getContext('2d');
+    x.imageSmoothingEnabled = false; x.globalAlpha = alpha; x.translate(cw >> 1, ch >> 1); x.rotate(ang);
+    text(x, str, -w / 2, -h / 2, col, { scale, shadow: false });
+    return c;
+  }
+  function buildDecals() {
+    // the same seed on every device, so everybody sees BEN SUCKS in the same place
+    let a = 90210; const rnd = () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    decals = [];
+    const free = (x, y, w, h, pad) => {
+      if (x < 40 || y < 40 || x + w > CFG.W - 40 || y + h > CFG.H - 40) return false;
+      for (const o of MAP.obs) if (o.x1 > x - 6 && o.x0 < x + w + 6 && o.y1 > y - 6 && o.y0 < y + h + 6) return false;
+      for (const d of decals) if (d.x + d.c.width > x - pad && d.x < x + w + pad && d.y + d.c.height > y - pad && d.y < y + h + pad) return false;
+      return true;
+    };
+    const put = (c, box, tries, pad) => {
+      for (let t = 0; t < tries; t++) {
+        const x = Math.round(box.x + rnd() * Math.max(1, box.w - c.width)), y = Math.round(box.y + rnd() * Math.max(1, box.h - c.height));
+        if (free(x, y, c.width, c.height, pad)) { decals.push({ c, x, y }); return true; }
+      }
+      return false;
+    };
+    const all = { x: 50, y: 50, w: CFG.W - 100, h: CFG.H - 100 };
+    // the name of each corner, stencilled on its floor
+    MAP.zones.forEach(z => { const c = paintText(ZNAME[z.zone], 6, 0, THEME[z.zone][2], 0.2); if (!put(c, { x: z.x + 16, y: z.y + 12, w: z.w - 32, h: 70 }, 30, 4)) put(c, z, 60, 4); });
+    for (const g of MAP.GRAFFITI) {
+      const c = paintText(g[0], g[2], rnd() < 0.3 ? 0 : (rnd() - 0.5) * 0.6, PAINT[(rnd() * PAINT.length) | 0], 0.2 + rnd() * 0.1);
+      put(c, g[1] >= 0 ? MAP.zones[g[1]] : all, 80, 14);
+    }
+    // spills: ketchup, mustard, cola, relish, milkshake
+    const SPILL = ['#e03c32', '#ffd23f', '#8a4b25', '#5cc04a', '#ff7eb6'];
+    for (let i = 0; i < 42; i++) {
+      const R = 16 + (rnd() * 20 | 0), c = HW.mk(R * 2 + 2, R * 2 + 2), x = c.getContext('2d'), col = SPILL[(rnd() * SPILL.length) | 0];
+      x.globalAlpha = 0.2;
+      const m = HW.mk(R * 2 + 2, R * 2 + 2), mx = m.getContext('2d');   // blobs are merged first so overlaps do not get darker
+      for (let k = 0; k < 7; k++) { const an = rnd() * 6.283, d = rnd() * R * 0.55, rr = Math.max(2, Math.round(R * (0.18 + rnd() * 0.3))); mx.drawImage(disc(col, rr), Math.round(R + Math.cos(an) * d) - rr, Math.round(R + Math.sin(an) * d) - rr); }
+      for (let k = 0; k < 6; k++) { const an = rnd() * 6.283, d = R * (0.7 + rnd() * 0.3); mx.fillStyle = col; mx.fillRect(Math.round(R + Math.cos(an) * d), Math.round(R + Math.sin(an) * d), 2, 2); }
+      x.drawImage(m, 0, 0); put(c, all, 30, 6);
+    }
+  }
+  // one obstacle as a sprite (its shadow included, down and to the right)
+  const SH = 5;
+  function obstacleSprite(o) {
+    if (o.spr) return o.spr;
+    const T = THEME[o.zone], K = '#1a1423', w = o.r ? o.r * 2 + 1 : o.w, h = o.r ? o.r * 2 + 1 : o.h, c = HW.mk(w + SH, h + SH + 2), x = c.getContext('2d');
+    if (o.r) {
+      const r = o.r;
+      x.globalAlpha = 0.4; x.drawImage(disc('#000000', r), SH - 1, SH + 1); x.globalAlpha = 1;
+      x.drawImage(disc(K, r), 0, 0);
+      if (o.k === 'table') {
+        // round table with a checked cloth and somebody's lunch
+        x.drawImage(disc(T[0], r - 1), 1, 1);
+        x.fillStyle = T[2]; for (let j = -r + 3; j <= r - 3; j++) for (let i = -r + 3; i <= r - 3; i++) if (i * i + j * j < (r - 3) * (r - 3) && (((i + 64) >> 3) + ((j + 64) >> 3)) & 1) x.fillRect(r + i, r + j, 1, 1);
+        x.fillStyle = T[1]; for (let i = 0; i < 40; i++) { const an = i * 6.283 / 40; x.fillRect(Math.round(r + Math.cos(an) * (r - 2)), Math.round(r + Math.sin(an) * (r - 2)), 1, 1); }
+        x.drawImage(disc(K, 8), r - 8, r - 8); x.drawImage(disc('#ffffff', 7), r - 7, r - 7); x.drawImage(disc('#dfe3ea', 5), r - 5, r - 5);
+        const f = HW.foodSpr[(o.i * 5) % HW.foodSpr.length]; x.drawImage(f, r - (f.width >> 1), r - (f.height >> 1));
+      } else {
+        // giant soda can seen from above
+        x.drawImage(disc('#c9d2e0', r - 1), 1, 1); x.drawImage(disc('#8d99ae', r - 3), 3, 3); x.drawImage(disc(T[0], r - 5), 5, 5);
+        x.fillStyle = T[2]; x.fillRect(r - Math.round(r * 0.45), r - Math.round(r * 0.5), 3, 2); x.fillRect(r - Math.round(r * 0.55), r - Math.round(r * 0.35), 2, 2);
+        x.fillStyle = K; x.fillRect(r - 4, r - 2, 9, 5); x.fillStyle = '#dfe3ea'; x.fillRect(r - 3, r - 1, 7, 3); x.fillStyle = K; x.fillRect(r + 1, r, 2, 1);
+      }
+    } else {
+      x.fillStyle = 'rgba(0,0,0,0.4)'; x.fillRect(SH, SH + 2, w, h);
+      x.fillStyle = K; x.fillRect(0, 0, w, h);
+      if (o.k === 'crate') {
+        x.fillStyle = '#b06a3a'; x.fillRect(1, 1, w - 2, h - 2); x.fillStyle = '#d9925a'; x.fillRect(1, 1, w - 2, 2);
+        x.fillStyle = '#7a4420'; x.fillRect(1, h - 5, w - 2, 4); x.fillRect(5, 1, 2, h - 2); x.fillRect(w - 7, 1, 2, h - 2);
+        pxLine(x, 7, 4, w - 9, h - 7, '#7a4420', 2); pxLine(x, w - 9, 4, 7, h - 7, '#7a4420', 2);
+        x.fillStyle = K; x.fillRect(3, 3, 1, 1); x.fillRect(w - 4, 3, 1, 1); x.fillRect(3, h - 8, 1, 1); x.fillRect(w - 4, h - 8, 1, 1);
+      } else if (o.k === 'vend') {
+        // vending machine lying in the way: glass front full of cans
+        x.fillStyle = T[0]; x.fillRect(1, 1, w - 2, h - 2); x.fillStyle = T[2]; x.fillRect(1, 1, w - 2, 2); x.fillStyle = T[1]; x.fillRect(1, h - 5, w - 2, 4);
+        const wide = w >= h, gw = wide ? w - 20 : w - 10, gh = wide ? h - 12 : h - 22;
+        x.fillStyle = K; x.fillRect(4, 5, gw + 2, gh + 2); x.fillStyle = '#2b3a55'; x.fillRect(5, 6, gw, gh);
+        for (let j = 0; j + 5 <= gh; j += 7) for (let i = 0; i + 4 <= gw; i += 6) { x.fillStyle = GUMC[(i + j * 3 + o.i) % 5]; x.fillRect(6 + i, 7 + j, 4, 5); x.fillStyle = 'rgba(255,255,255,0.5)'; x.fillRect(6 + i, 7 + j, 1, 2); }
+        x.fillStyle = K; if (wide) { x.fillRect(w - 11, 6, 7, 4); x.fillRect(w - 9, 14, 3, 6); } else { x.fillRect(5, h - 13, 7, 4); x.fillRect(w - 10, h - 13, 5, 3); }
+        x.fillStyle = '#ffd23f'; if (wide) x.fillRect(w - 10, 7, 5, 2); else x.fillRect(6, h - 12, 5, 2);
+      } else {
+        // diner counter: coloured top, chrome edge, plates of food along it
+        x.fillStyle = '#c9d2e0'; x.fillRect(1, 1, w - 2, h - 2); x.fillStyle = '#8d99ae'; x.fillRect(1, h - 5, w - 2, 4);
+        x.fillStyle = T[0]; x.fillRect(3, 3, w - 6, h - 10); x.fillStyle = T[2]; x.fillRect(3, 3, w - 6, 2); x.fillStyle = T[1]; x.fillRect(3, h - 9, w - 6, 2);
+        const wide = w >= h, len = wide ? w : h, n = Math.max(1, Math.floor(len / 46));
+        for (let i = 0; i < n; i++) {
+          const q = Math.round((i + 0.5) * len / n), px = wide ? q : w >> 1, py = wide ? (h >> 1) - 2 : q;
+          if ((i + o.i) % 3 === 2) { x.fillStyle = K; x.fillRect(px - 6, py - 4, 12, 8); x.fillStyle = '#dfe3ea'; x.fillRect(px - 5, py - 3, 10, 6); x.fillStyle = '#8d99ae'; x.fillRect(px - 5, py, 10, 1); }   // napkin box
+          else { x.drawImage(disc(K, 8), px - 8, py - 8); x.drawImage(disc('#ffffff', 7), px - 7, py - 7); const f = HW.foodSpr[(o.i * 3 + i * 7) % HW.foodSpr.length]; x.drawImage(f, px - (f.width >> 1), py - (f.height >> 1)); }
+        }
+      }
+    }
+    return o.spr = c;
+  }
+  const mmCache = {};
+  // minimap background: zones tinted, obstacles as pale blocks
+  function mmBg(ms) {
+    let c = mmCache[ms]; if (c) return c;
+    c = mmCache[ms] = HW.mk(ms, ms); const x = c.getContext('2d'), k = ms / CFG.W;
+    for (const z of MAP.zones) { x.globalAlpha = 0.16; x.fillStyle = THEME[z.zone][0]; x.fillRect(Math.round(z.x * k), Math.round(z.y * k), Math.round(z.w * k), Math.round(z.h * k)); }
+    x.globalAlpha = 0.55; x.fillStyle = '#cfd3e6';
+    for (const o of MAP.obs) x.fillRect(Math.floor(o.x0 * k), Math.floor(o.y0 * k), Math.max(1, Math.round((o.x1 - o.x0) * k)), Math.max(1, Math.round((o.y1 - o.y0) * k)));
+    return c;
+  }
   function drawBullet(c, b, ox, oy) {
     const x = Math.round(b.x - ox), y = Math.round(b.y - oy);
     switch (b.ch) {
@@ -158,16 +269,26 @@
 
   // draw the world for one viewport v = {x,y,w,h, cam:{x,y}, trip, slow}
   R.drawView = function (v, G, t) {
-    if (vc.width !== v.w || vc.height !== v.h) { vc.width = v.w; vc.height = v.h; vx.imageSmoothingEnabled = false; pattern = null; }
+    if (vc.width !== v.w || vc.height !== v.h) { vc.width = v.w; vc.height = v.h; vx.imageSmoothingEnabled = false; pattern = null; zonePat = null; }
     const M = Math.round(Math.min(v.w, v.h) * 0.2), ccx = v.w >= CFG.W + 2 * M ? CFG.W / 2 : Math.max(v.w / 2 - M, Math.min(CFG.W - v.w / 2 + M, v.cam.x)), ccy = v.h >= CFG.H + 2 * M ? CFG.H / 2 : Math.max(v.h / 2 - M, Math.min(CFG.H - v.h / 2 + M, v.cam.y));
     const c = vx, ox = Math.round(ccx - v.w / 2), oy = Math.round(ccy - v.h / 2);
     v.px = v.cam.x - ox; v.py = v.cam.y - oy;
     if (!pattern) pattern = c.createPattern(HW.floorTile, 'repeat');
+    if (!zonePat) zonePat = HW.zoneTiles.map(t => c.createPattern(t, 'repeat'));
+    if (!decals) buildDecals();
     c.fillStyle = '#120e1c'; c.fillRect(0, 0, v.w, v.h);
     const fx0 = Math.max(0, -ox), fy0 = Math.max(0, -oy), fx1 = Math.min(v.w, CFG.W - ox), fy1 = Math.min(v.h, CFG.H - oy);
     if (fx1 > fx0 && fy1 > fy0) {
-      c.save(); c.translate(-(((ox % 64) + 64) % 64), -(((oy % 64) + 64) % 64)); c.fillStyle = pattern;
-      c.fillRect(fx0 + (((ox % 64) + 64) % 64), fy0 + (((oy % 64) + 64) % 64), fx1 - fx0, fy1 - fy0); c.restore();
+      // floor: the diner checker everywhere, a themed floor in each corner and in the middle. Drawn in world
+      // coordinates so the patterns stay glued to the ground.
+      c.save(); c.translate(-ox, -oy); c.fillStyle = pattern; c.fillRect(fx0 + ox, fy0 + oy, fx1 - fx0, fy1 - fy0);
+      for (const z of MAP.zones) {
+        const x0 = Math.max(z.x, ox), y0 = Math.max(z.y, oy), x1 = Math.min(z.x + z.w, ox + v.w), y1 = Math.min(z.y + z.h, oy + v.h); if (x1 <= x0 || y1 <= y0) continue;
+        c.fillStyle = zonePat[z.zone]; c.fillRect(x0, y0, x1 - x0, y1 - y0);
+        c.globalAlpha = 0.45; c.fillStyle = THEME[z.zone][1]; c.fillRect(z.x, z.y, z.w, 2); c.fillRect(z.x, z.y + z.h - 2, z.w, 2); c.fillRect(z.x, z.y, 2, z.h); c.fillRect(z.x + z.w - 2, z.y, 2, z.h); c.globalAlpha = 1;
+      }
+      c.restore();
+      for (const d of decals) { const x = d.x - ox, y = d.y - oy; if (x < v.w && y < v.h && x + d.c.width > 0 && y + d.c.height > 0) c.drawImage(d.c, x, y); }
       // wall
       c.fillStyle = '#e03c32';
       if (ox < 0) c.fillRect(-ox - 4, fy0 - 4, 4, fy1 - fy0 + 8); if (oy < 0) c.fillRect(fx0 - 4, -oy - 4, fx1 - fx0 + 8, 4);
@@ -176,14 +297,19 @@
     for (const z of G.zones) if (z.k === 1 && z.x - ox > -z.r - 4 && z.x - ox < v.w + z.r + 4 && z.y - oy > -z.r - 4 && z.y - oy < v.h + z.r + 4) drawZone(c, z, ox, oy, t, false);
     // items
     for (const it of G.items.values()) {
-      const x = it.x - ox, y = it.y - oy; if (x < -14 || y < -14 || x > v.w + 14 || y > v.h + 14) continue;
+      const x = it.x - ox, y = it.y - oy; if (x < -26 || y < -26 || x > v.w + 26 || y > v.h + 26) continue;
       let s;
-      if (it.k === 'f') s = HW.foodSpr[it.type];
+      if (it.k === 'f') s = it.v >= CFG.BIG ? HW.foodSpr2[it.type] : HW.foodSpr[it.type];   // proper food is double size, crumbs are small
       else if (it.k === 'a') { s = HW.ammoSpr; if (((t * 3 + it.id) | 0) % 2) ring(c, Math.round(x), Math.round(y), 10, '#ffd23f', 8, t * 2, 1); }
-      else if (it.k === 'v') s = HW.vegSpr[it.type];
-      else { s = HW.shroomSpr[it.type]; ring(c, Math.round(x), Math.round(y), 9 + Math.sin(t * 3 + it.id) * 2, ['#ff7eb6', '#4cc9f0', '#ffd23f'][((t * 4 + it.id) | 0) % 3], 5, t * 1.5 + it.id, 1); }
+      else if (it.k === 'v') { s = HW.vegSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18, '#5cc04a', 8, -t * 0.8 + it.id, 2); }
+      else { s = HW.shroomSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18 + Math.sin(t * 3 + it.id) * 3, ['#ff7eb6', '#4cc9f0', '#ffd23f'][((t * 4 + it.id) | 0) % 3], 7, t * 1.5 + it.id, 2); }
       const bob = it.k === 'f' ? 0 : Math.round(Math.sin(t * 3 + it.id) * 1.2);
       c.drawImage(s, Math.round(x - s.width / 2), Math.round(y - s.height / 2) + bob);
+    }
+    // obstacles
+    for (const o of MAP.obs) {
+      if (o.x1 - ox < -8 || o.x0 - ox > v.w + 2 || o.y1 - oy < -10 || o.y0 - oy > v.h + 2) continue;
+      c.drawImage(obstacleSprite(o), Math.round(o.x0 - ox), Math.round(o.y0 - oy));
     }
     // worms (biggest first so little ones stay visible)
     let leader = null; for (const w of G.worms) if (w.alive && (!leader || w.mass > leader.mass)) leader = w;
@@ -234,7 +360,7 @@
     const sa = (HW.Input && HW.Input.touch.layout && HW.Input.touch.layout.safe) || { l: 0, r: 0, t: 0, b: 0 }; // notch / home-indicator insets, canvas px
     // minimap
     const ms = small ? 50 : 60, mx = v.x + 5 + (v.x <= 0 ? sa.l : 0), my = v.y + 5;
-    panel(c, mx - 1, my - 1, ms + 2, ms + 2, 0.9); c.fillStyle = 'rgba(255,255,255,0.06)'; c.fillRect(mx, my, ms, ms);
+    panel(c, mx - 1, my - 1, ms + 2, ms + 2, 0.9); c.fillStyle = 'rgba(255,255,255,0.06)'; c.fillRect(mx, my, ms, ms); c.drawImage(mmBg(ms), mx, my);
     for (const z of G.zones) { c.fillStyle = z.k === 0 ? '#7ed321' : '#c9c13a'; c.fillRect(mx + (z.x / CFG.W * ms | 0) - 1, my + (z.y / CFG.H * ms | 0) - 1, 3, 3); }
     let leader = null;
     for (const w of G.worms) {
@@ -316,8 +442,9 @@
   };
 
   // touch controls overlay (full screen)
-  R.drawTouch = function (T, me, t) {
-    const c = cx, L = T.layout;
+  // C: the player's character (so the ability button shows while they are dead too)
+  R.drawTouch = function (T, me, t, C) {
+    const c = cx, L = T.layout; if (!L) return;
     const stick = (s, col, idleX, idleY) => {
       const x = s.on ? s.ox : idleX, y = s.on ? s.oy : idleY;
       c.globalAlpha = s.on ? 0.5 : 0.16; ring(c, x, y, L.ring || 26, col, 20, 0, 2);
@@ -340,7 +467,8 @@
       c.globalAlpha = 1; text(c, CHARS[me.ch].ability, b.x, b.y - 7, '#fff', { align: 0.5 });
       text(c, ready ? 'GO!' : Math.ceil(me.abil), b.x, b.y + 3, ready ? '#fff' : '#ccd', { align: 0.5 });
     }
-    b = L.pause; panel(c, b.x, b.y, b.w, b.h, 0.5); c.fillStyle = '#ccd'; c.fillRect(b.x + 6, b.y + 4, 3, b.h - 8); c.fillRect(b.x + b.w - 9, b.y + 4, 3, b.h - 8);
+    b = L.pause; if (!b) return;   // only P1's half carries the pause button
+    panel(c, b.x, b.y, b.w, b.h, 0.5); c.fillStyle = '#ccd'; c.fillRect(b.x + 6, b.y + 4, 3, b.h - 8); c.fillRect(b.x + b.w - 9, b.y + 4, 3, b.h - 8);
   };
 
   R.clear = function () { cx.fillStyle = '#120e1c'; cx.fillRect(0, 0, R.W, R.H); };

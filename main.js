@@ -28,6 +28,12 @@
 
   // ---------- app state ----------
   const App = HW.App = { mode: 'menu', screen: '', sim: null, G: null, locals: [], paused: false, t: 0, acc: 0, myPid: -1, netFrame: 0, previews: [], focus: 0, sel: { mode: 'solo', step: 0, picks: [+store.get('ch', 0) || 0, 1], code: '' }, demoCam: { x: CFG.W / 2, y: CFG.H / 2 } };
+  // bot difficulty (index into HW.DIFFS). Easy is the default: new players should survive their first minute.
+  App.diff = Math.max(0, Math.min(HW.DIFFS.length - 1, +store.get('diff', 0) || 0));
+  App.playDiff = App.diff;   // difficulty of the game being played (an online client gets the host's)
+  // best scores are kept per difficulty. Keys from before (size-only scores, one shared number) are dropped.
+  try { localStorage.removeItem('hw_best'); } catch (e) { }
+  const bestKey = d => 'best3_' + d, getBest = d => +store.get(bestKey(d), 0) || 0;
   const ui = $('ui');
   const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
@@ -60,21 +66,23 @@
       el('div', 'col', [btn('HOST ONLINE GAME', go('host')), btn('JOIN ONLINE GAME', go('join'))])
     ]));
     ui.appendChild(el('div', 'row', [btn('HOW TO PLAY', () => App.show('help'), 'alt', 1.2), btn(Snd.on ? 'SOUND: ON' : 'SOUND: OFF', () => { Snd.on = !Snd.on; store.set('snd', Snd.on ? '1' : '0'); App.show('title'); }, 'alt', 1.2)]));
-    const best = +store.get('best', 0); if (best > 0) ui.appendChild(px('YOUR BEST: ' + best, '#b5e61d', 1.2));
+    const bests = HW.DIFFS.map((d, i) => getBest(i) > 0 ? d.name + ' ' + getBest(i) : '').filter(Boolean);
+    if (bests.length) ui.appendChild(px('YOUR BEST:  ' + bests.join('   '), '#b5e61d', 1));
   };
 
   SCREENS.help = function () {
     const L = [
       ['EAT JUNK FOOD TO GROW. RUN YOUR HEAD INTO ANOTHER WORM AND YOU DIE.', '#fff'],
       ['SHOOT WORMS TO KNOCK FOOD OUT OF THEM. AMMO COMES FROM CRATES.', '#fff'],
-      ['VEGGIES SLOW YOU DOWN. MUSHROOMS MAKE THE WORLD GO WOBBLY.', '#9cf08a'],
+      ['COUNTERS, TABLES AND CRATES BLOCK SHOTS AND WORMS. HIDE BEHIND THEM.', '#fff'],
+      ['VEGGIES SHRINK YOU AND SLOW YOU DOWN. MUSHROOMS MAKE EVERYTHING WOBBLY.', '#9cf08a'],
       ['FART: TOXIC CLOUD, KILLS ANY OTHER WORM.  PUKE: STICKY PUDDLE, STUCK 10 SEC.', '#d7e84a'],
-      ['', '#fff'],
       ['PHONE: LEFT THUMB MOVES. RIGHT THUMB AIMS AND SHOOTS. BOOST + ABILITY BUTTONS.', '#9be7ff'],
       ['KEYBOARD: WASD OR ARROWS MOVE. MOUSE AIMS, CLICK SHOOTS (OR SPACE).', '#9be7ff'],
       ['          SHIFT BOOSTS. E USES YOUR ABILITY. ESC PAUSES.', '#9be7ff'],
       ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY.', '#9be7ff'],
-      ['2 PLAYERS: P1 TOUCH OR WASD+MOUSE.  P2 CONTROLLER OR ARROWS, ENTER, SHIFT, PERIOD.', '#ffb0a8'],
+      ['2 PLAYERS: EACH HALF OF THE SCREEN HAS ITS OWN TOUCH CONTROLS.', '#ffb0a8'],
+      ['           OR P1 WASD+MOUSE, P2 CONTROLLER OR ARROWS, ENTER, SHIFT, PERIOD.', '#ffb0a8'],
       ['ONLINE: ONE DEVICE HOSTS AND SHARES THE 4 LETTER ROOM CODE. UP TO 4 PLAYERS.', '#ffb0a8']
     ];
     ui.appendChild(px('HOW TO PLAY', '#ffd23f', 2.5));
@@ -105,7 +113,7 @@
     ui.appendChild(el('div', 'row nw', cards));
     const ab = C.ability === 'fart' ? 'ABILITY: FART - TOXIC CLOUD THAT KILLS OTHER WORMS' : C.ability === 'puke' ? 'ABILITY: PUKE - PUDDLE THAT GLUES WORMS IN PLACE' : 'NO ABILITY. WEAKNESS: FART AND PUKE BOTH KILL HIM';
     ui.appendChild(el('div', 'panel', [px(C.name + ' - ' + C.blurb, '#fff', 1), statBars(C), px('GUN: ' + C.gun.name + ' - ' + C.gun.desc, '#9be7ff', 0.9), px(ab, C.ability ? '#d7e84a' : '#ffb0a8', 0.9),
-    two ? px(who === 0 ? 'P1 PLAYS WITH TOUCH, OR WASD + MOUSE' : 'P2 PLAYS WITH A CONTROLLER, OR ARROW KEYS', '#ffb0a8', 0.9) : null]));
+    two ? px(who === 0 ? 'P1: LEFT HALF OF THE SCREEN, OR WASD + MOUSE' : 'P2: RIGHT HALF OF THE SCREEN, A CONTROLLER, OR ARROW KEYS', '#ffb0a8', 0.9) : null]));
     const back = () => { if (two && S.step === 1) { S.step = 0; App.show('select'); } else App.show('title'); };
     const next = () => {
       if (S.mode === 'solo') startLocal([S.picks[0]]);
@@ -116,7 +124,11 @@
     const label = S.mode === 'solo' ? 'PLAY!' : two ? (S.step === 0 ? 'NEXT' : 'PLAY!') : S.mode === 'host' ? 'HOST GAME' : 'NEXT';
     const nb = btn(label, next, 'go', 1.6); nb.dataset.def = '1';
     const bb = btn('BACK', back, 'alt'); bb.dataset.back = '1';
-    ui.appendChild(el('div', 'row', [bb, nb]));
+    // bot difficulty: tap to cycle. Not shown when joining (the host's setting applies).
+    const DCOL = ['#b5e61d', '#ffd23f', '#ff8a80'];
+    const db = S.mode === 'join' ? null : btn('BOTS: ' + HW.DIFFS[App.diff].name, () => { App.diff = (App.diff + 1) % HW.DIFFS.length; store.set('diff', App.diff); App.show('select'); }, 'alt', 1.2, DCOL[App.diff]);
+    if (db) db.dataset.diff = '1';
+    ui.appendChild(el('div', 'row', [bb, db, nb]));
   };
 
   SCREENS.join = function () {
@@ -137,6 +149,7 @@
   };
   SCREENS.pause = function () {
     ui.appendChild(px(Net.role ? 'MENU' : 'PAUSED', '#ffd23f', 3));
+    if (HW.DIFFS[App.playDiff]) ui.appendChild(px('BOTS: ' + HW.DIFFS[App.playDiff].name, '#9be7ff', 1));
     if (Net.role) {
       ui.appendChild(el('div', 'panel c', [px('ROOM CODE', '#9be7ff', 1), px(Net.code, '#ffd23f', 4), px(Net.role === 'host' ? 'FRIENDS: OPEN THE GAME, JOIN ONLINE GAME, TYPE THIS CODE' : 'THE GAME KEEPS RUNNING WHILE THIS MENU IS OPEN', '#ccd', 0.85)]));
       if (Net.role === 'host') ui.appendChild(btn('SHARE INVITE LINK', share, '', 1.2));
@@ -195,10 +208,10 @@
     }
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => App.wake = l).catch(() => { }); } catch (e) { }
   }
-  function newSim() { const s = new HW.Sim(); return s; }
+  function newSim(diff) { return new HW.Sim({ diff: diff === undefined ? 1 : diff }); }   // the demo behind the menu plays at intermediate
   function startLocal(chars) {
-    Net.close(); App.sim = newSim(); App.G = App.sim.S; App.sim.S.events = []; App.bestBefore = +store.get('best', 0) || 0;
-    App.locals = chars.map((ch, i) => { const l = mkLocal(i, ch); l.player = App.sim.addPlayer(ch); l.player.best = +store.get('best', 0) || 0; l.player.inp = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false }; return l; });
+    Net.close(); App.playDiff = App.diff; App.sim = newSim(App.diff); App.G = App.sim.S; App.sim.S.events = []; App.bestBefore = getBest(App.playDiff);
+    App.locals = chars.map((ch, i) => { const l = mkLocal(i, ch); l.player = App.sim.addPlayer(ch); l.player.best = getBest(App.playDiff); l.player.inp = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false }; return l; });
     begin();
   }
   function startHost(ch) {
@@ -212,7 +225,7 @@
     Net.close(); App.connMsg = 'JOINING ROOM ' + code + '...'; App.mode = 'connecting'; App.show('connecting');
     const G = Net.newMirror();
     Net.join(code, ch, {
-      onInit(m) { App.myPid = m.pid; },
+      onInit(m) { App.myPid = m.pid; App.playDiff = Math.max(0, Math.min(HW.DIFFS.length - 1, m.d | 0)); App.bestBefore = getBest(App.playDiff); },
       onPart(m) { Net.applyPart(G, m); },
       onSnap(m) {
         Net.applySnap(G, m);
@@ -224,7 +237,7 @@
   }
   function toMenu() { App.mode = 'menu'; App.locals = []; App.sim = newSim(); App.G = App.sim.S; fx.clear(); App.show('title'); try { if (App.wake) App.wake.release(); } catch (e) { } }
   function quit() { saveBest(); Net.close(); toMenu(); }
-  function saveBest() { for (const l of App.locals) { const b = Math.round((l.player && l.player.best) || 0); if (b > +store.get('best', 0)) store.set('best', b); } }
+  function saveBest() { for (const l of App.locals) { const b = Math.round((l.player && l.player.best) || 0); if (b > getBest(App.playDiff)) store.set(bestKey(App.playDiff), b); } }
   function setPause(p) { for (const l of App.locals) if (l.dev.prev) l.dev.prev.pause = true; App.paused = p; In.resetTouch(); App.show(p ? 'pause' : ''); }
 
   // ---------- events -> particles + sound ----------
@@ -246,6 +259,7 @@
       case 'eat': if (mine(e[3]) && gate('eat', 45)) Snd.tone(500 + e[4] * 110 + Math.random() * 60, 0.05, 'square', 0.05, 900); break;
       case 'hit': fx.burst(x, y, FOODC, 6, 90, 0.4, 2); if (mine(e[3])) { fx.text(x, y - 10, '-' + e[4], '#ff5a4d'); if (gate('ouch', 80)) Snd.tone(220, 0.12, 'sawtooth', 0.14, 90); for (const l of App.locals) if (l.me && l.me.id === e[3]) l.view.shake = 0.2; } else if (vol && gate('hit', 50)) Snd.tone(320, 0.05, 'square', 0.05 * vol, 160); break;
       case 'puff': fx.burst(x, y, ['#ccc', '#888'], 2, 30, 0.2, 1); break;
+      case 'clang': fx.burst(x, y, ['#fff', '#c9d2e0', '#8d99ae'], 4, 70, 0.25, 1); if (vol && gate('clang', 70)) Snd.tone(1500 + Math.random() * 500, 0.04, 'triangle', 0.05 * vol, 700); break;
       case 'boom': fx.burst(x, y, ['#fff', '#ffd23f', '#f08a1c', '#e03c32', '#555'], 46, 260, 0.6, 3); fx.burst(x, y, ['#777', '#555'], 14, 90, 0.9, 4);
         if (vol) { Snd.noise(0.7, 0.5 * vol, 1400, 90); Snd.tone(110, 0.5, 'sine', 0.3 * vol, 35); for (const l of App.locals) if (Math.abs(l.view.cam.x - x) + Math.abs(l.view.cam.y - y) < 320) l.view.shake = Math.max(l.view.shake, 0.35); } break;
       case 'die': {
@@ -263,7 +277,7 @@
       case 'fart': fx.burst(x, y, ['#7ed321', '#a8e04a', '#c6f06a'], 26, 120, 0.8, 3); if (vol && gate('fart', 100)) { Snd.tone(95, 0.55, 'sawtooth', 0.22 * vol, 48); Snd.noise(0.5, 0.18 * vol, 300, 120); } break;
       case 'puke': fx.burst(x, y, ['#c9c13a', '#a3b02c', '#f08a1c'], 26, 110, 0.6, 3); if (vol && gate('puke', 100)) { Snd.noise(0.45, 0.3 * vol, 700, 250); Snd.tone(260, 0.4, 'triangle', 0.14 * vol, 110); } break;
       case 'stuck': fx.text(x, y - 16, 'STUCK!', '#d7e84a'); if (mine(e[3])) Snd.tone(180, 0.4, 'triangle', 0.16, 70); break;
-      case 'veg': fx.text(x, y - 12, 'YUCK!', '#9cf08a'); fx.burst(x, y, ['#5cc04a', '#2f7d32'], 8, 60, 0.4, 2); if (mine(e[3])) Snd.tone(200, 0.3, 'sawtooth', 0.12, 120); break;
+      case 'veg': fx.text(x, y - 12, e[4] ? 'YUCK! -' + e[4] : 'YUCK!', '#9cf08a'); fx.burst(x, y, ['#5cc04a', '#2f7d32'], 8, 60, 0.4, 2); if (mine(e[3])) Snd.tone(200, 0.3, 'sawtooth', 0.12, 120); break;
       case 'shroom': fx.text(x, y - 12, 'WHOA!', '#ff7eb6'); fx.burst(x, y, ['#ff7eb6', '#4cc9f0', '#ffd23f'], 12, 70, 0.6, 2); if (mine(e[3])) { Snd.tone(300, 0.6, 'sine', 0.14, 900); Snd.tone(450, 0.6, 'sine', 0.1, 150, 0.1); } break;
       case 'ammo': fx.text(x, y - 12, '+AMMO', '#ffd23f'); if (mine(e[3])) { Snd.tone(660, 0.07, 'square', 0.1); Snd.tone(990, 0.1, 'square', 0.1, 0, 0.07); } break;
       case 'dry': if (mine(e[3]) && gate('dry', 200)) Snd.tone(1200, 0.03, 'square', 0.06); break;
@@ -278,14 +292,14 @@
     if (n === 1) App.locals[0].dev = Object.assign(App.locals[0].dev, { touch: true, kb: 'both', mouse: true, pad: 'any' });
     else {
       Object.assign(App.locals[0].dev, { touch: true, kb: 'wasd', mouse: true, pad: np >= 2 ? 0 : -1 });
-      Object.assign(App.locals[1].dev, { touch: false, kb: 'arrows', mouse: false, pad: np >= 1 ? np - 1 : -1 });
+      Object.assign(App.locals[1].dev, { touch: true, tpad: 1, kb: 'arrows', mouse: false, pad: np >= 1 ? np - 1 : -1 });   // tpad: which half's touch controls (see input.js)
     }
   }
   function playFrame(dt) {
     R.setTarget(App.locals.length > 1 ? 380 : 270); layoutViews(); const client = Net.role === 'client', G = App.G;
     const M = G.match;
     if (M && M.over && App.screen !== 'results') { App.paused = false; saveBest(); In.resetTouch(); App.show('results'); Snd.tone(523, 0.14, 'square', 0.1); Snd.tone(659, 0.14, 'square', 0.1, 0, 0.14); Snd.tone(784, 0.3, 'square', 0.1, 0, 0.28); }
-    else if (M && !M.over && App.screen === 'results') { App.bestBefore = +store.get('best', 0) || 0; fx.clear(); App.show(''); }
+    else if (M && !M.over && App.screen === 'results') { App.bestBefore = getBest(App.playDiff); fx.clear(); App.show(''); }
     if (App.screen === 'results') {
       In.pausePressed = false;
       if (App.nextEl) { const s = Math.ceil(Net.role === 'host' ? Math.max(0, (App.sim.S.autoNext || 0) - M.overT) : M.next || 0); if (s !== App.nextShown) { App.nextShown = s; App.nextEl.innerHTML = ''; App.nextEl.appendChild(px(s > 0 ? 'NEXT MATCH IN ' + s : 'NEXT MATCH STARTING...', '#9be7ff', 1)); } }
@@ -303,6 +317,7 @@
         const dead = !l.me; l.wantSpawn = dead && (p.deadT > 3 || (p.deadT > 1 && o.tap));
         if (l.me) { const aiming = o.ax * o.ax + o.ay * o.ay > 0.09; l.me.localAim = aiming; if (aiming) l.me.aim = Math.atan2(o.ay, o.ax); if (l.me.mass > (l.best || 0)) l.best = l.me.mass; }
         p.best = Math.max(p.best || 0, l.best || 0);
+        G.myId = l.me ? l.me.id : 0; G.myInp = o;   // net.js predicts our own worm from these (see Net.clientUpdate)
         Net.sendInput(o, l.abilSeq, l.wantSpawn);
       } else {
         p = l.player; const I = p.inp; I.mx = o.mx; I.my = o.my; I.ax = o.ax; I.ay = o.ay; I.fire = o.fire; I.boost = o.boost; I.auto = o.auto; if (o.abil) I.abil = true;
@@ -330,12 +345,13 @@
       }
       let sx = 0, sy = 0; if (v.shake > 0) { v.shake -= dt; sx = (Math.random() - 0.5) * 10 * v.shake / 0.3; sy = (Math.random() - 0.5) * 10 * v.shake / 0.3; }
       v.meId = me ? me.id : 0; v.cam.x += sx; v.cam.y += sy; R.drawView(v, G, t); if (me) { v.px += me.x - v.cam.x; v.py += me.y - v.cam.y; } v.cam.x -= sx; v.cam.y -= sy;
-      const useTouch = l.dev.touch && In.touch.used && In.lastKind === 'touch';
+      // P1 (and solo) follow In.lastKind; P2's touch controls show unless P2 is on a controller or the keyboard
+      const useTouch = l.useTouch = !!(l.dev.touch && In.touch.used && (l.slot === 0 ? In.lastKind === 'touch' : isTouch && !l.dev.hasPad && (l.dev.kind || 'touch') === 'touch'));
       R.drawHUD(v, { G, me, player: l.player, t, touch: useTouch, roomCode: l.slot === 0 && Net.role ? Net.code : '', slotLabel: App.locals.length > 1 ? 'P' + (l.slot + 1) : '', abilKey: useTouch ? '' : (l.slot === 0 ? In.lastKind === 'pad' : l.dev.hasPad) ? '(X)' : l.slot === 1 ? '(.)' : '(E)' });
     }
     if (App.locals.length > 1) R.divider(App.locals[1].view.x);
     if (App.previews.length) drawPreviews();
-    const l0 = App.locals[0]; if (l0 && l0.dev.touch && In.touch.used && In.lastKind === 'touch') R.drawTouch(In.touch, l0.me, t);
+    for (const l of App.locals) if (l.useTouch) R.drawTouch((In.tpads || [In.touch])[l.dev.tpad || 0] || In.touch, l.me, t, CHARS[l.ch]);
   }
   // step the authoritative sim, play its events, feed the network
   function advance(dt, maxSteps, silent) {
