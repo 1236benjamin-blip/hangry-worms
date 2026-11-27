@@ -483,6 +483,12 @@
       }
       text(c, 'KILLS ' + mine.kills, mx, my + ms + 14, '#fff');
     }
+    // bumping into a worm: red edges and a shout, so the moment of impact cannot be missed
+    if (v.warn > 0) {
+      c.fillStyle = ((t * 14) | 0) % 2 ? 'rgba(255,60,50,0.55)' : 'rgba(255,210,63,0.45)';
+      c.fillRect(v.x, v.y, v.w, 5); c.fillRect(v.x, v.y + v.h - 5, v.w, 5); c.fillRect(v.x, v.y, 5, v.h); c.fillRect(v.x + v.w - 5, v.y, 5, v.h);
+      text(c, 'TURN!', tcx, v.y + v.h / 2 - 46, ((t * 14) | 0) % 2 ? '#ff5a4d' : '#ffffff', { align: 0.5, scale: 2 });
+    }
     // banner: streak callouts, power-up names, the last-minute frenzy
     if (v.banner && v.banner.t > 0) { const B = v.banner, big = !small && B.s.length < 22; text(c, B.s, tcx + (B.t > 1.6 ? Math.sin(t * 40) * 2 : 0), v.y + Math.round(v.h * 0.27), ((t * 8) | 0) % 2 ? B.c : '#ffffff', { align: 0.5, scale: big ? 2 : 1 }); }
     // kill feed

@@ -295,6 +295,11 @@
       case 'shroom': fx.text(x, y - 12, 'WHOA!', '#ff7eb6'); if (e[4]) fx.text(x, y - 22, CHARS[(wormOf(e[3]) || { ch: 0 }).ch].ability + ' -' + e[4] + 'S', '#d9ff7a'); fx.burst(x, y, ['#ff7eb6', '#4cc9f0', '#ffd23f'], 12, 70, 0.6, 2); if (mine(e[3])) { Snd.tone(300, 0.6, 'sine', 0.14, 900); Snd.tone(450, 0.6, 'sine', 0.1, 150, 0.1); } break;
       case 'ammo': fx.text(x, y - 12, '+AMMO', '#ffd23f'); if (mine(e[3])) { Snd.tone(660, 0.07, 'square', 0.1); Snd.tone(990, 0.1, 'square', 0.1, 0, 0.07); } break;
       case 'dry': if (mine(e[3]) && gate('dry', 200)) Snd.tone(1200, 0.03, 'square', 0.06); break;
+      // bumping into another worm: sparks, a thud that rises as time runs out, and a warning for the player it is happening to
+      case 'bump': fx.burst(x, y, ['#fff', '#ff5a4d', '#ffd23f'], 4, 90, 0.25, 2);
+        if (mine(e[3])) { for (const l of App.locals) if (l.me && l.me.id === e[3]) { l.view.warn = 0.22; l.view.shake = Math.max(l.view.shake, 0.08); } if (gate('bump', 90)) { Snd.tone(140 + e[4] * 3, 0.09, 'sawtooth', 0.16, 70); Snd.noise(0.05, 0.14, 900); } }
+        else if (vol && gate('bump2', 120)) Snd.tone(120, 0.06, 'square', 0.05 * vol, 60);
+        break;
       // ---- power-ups, special guns, golden burger ----
       case 'drop': if (!demo && vol && gate('drop', 300)) { Snd.tone(1320, 0.12, 'sine', 0.06 * vol); Snd.tone(1760, 0.2, 'sine', 0.05 * vol, 0, 0.1); } break;   // something turned up nearby
       case 'power': {
@@ -394,6 +399,7 @@
         }
       }
       if (v.banner && v.banner.t > 0 && !frozen) v.banner.t -= dt;
+      if (v.warn > 0) v.warn -= dt;
       let sx = 0, sy = 0; if (v.shake > 0) { v.shake -= dt; sx = (Math.random() - 0.5) * 10 * v.shake / 0.3; sy = (Math.random() - 0.5) * 10 * v.shake / 0.3; }
       v.meId = me ? me.id : 0; v.cam.x += sx; v.cam.y += sy; R.drawView(v, G, t); if (me) { v.px += me.x - v.cam.x; v.py += me.y - v.cam.y; } v.cam.x -= sx; v.cam.y -= sy;
       // P1 (and solo) follow In.lastKind; P2's touch controls show unless P2 is on a controller or the keyboard
