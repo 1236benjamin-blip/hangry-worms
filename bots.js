@@ -61,7 +61,7 @@
   const AIM_ERR = 0.65; // the clumsiest bot's worst burst is off by about AIM_ERR * 0.95 radians
 
   HW.botThink = function (sim, w, dt) {
-    const b = w.bot, S = sim.S, C = CHARS[w.ch], g = C.gun, I = w.inp, D = HW.DIFFS[S.diff];
+    const b = w.bot, S = sim.S, C = CHARS[w.ch], g = HW.gunOf(w), I = w.inp, D = HW.DIFFS[S.diff];
     if (b.panic > 0) b.panic -= dt;
     if (b.fireT > 0) b.fireT -= dt;
     if (b.burst > 0) b.burst -= dt;
@@ -199,7 +199,7 @@
         const rx = w.x - u.x, ry = w.y - u.y; if (rx > 280 || rx < -280 || ry > 280 || ry < -280) continue;
         const vx = u.vx - mvx, vy = u.vy - mvy, t = (rx * vx + ry * vy) / (vx * vx + vy * vy + 1);
         if (t < 0.03 || t > soon) continue;
-        const gg = CHARS[u.ch].gun, blast = gg.blast || 0;
+        const gg = HW.GUNS[u.ch], blast = gg.blast || 0;
         if (!blast && t > u.life + 0.05) continue; // it fizzles out before it gets here
         const cx = rx - vx * t, cy = ry - vy * t, safe = w.r + gg.br + 10 + blast * 0.55;
         if (cx * cx + cy * cy > safe * safe) continue;
