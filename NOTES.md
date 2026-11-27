@@ -132,7 +132,7 @@ EASY (the default), INTERMEDIATE and HARD: the BOTS button on the pick-your-worm
 - `test/perf.py`: simulation and draw cost in a normal and a worst-case scene, unthrottled and with the CPU throttled 4x; fails over budget.
 - `test/smoke.py`: loads, starts, no errors.
 
-Run them with `python3 -m http.server 8377` in this folder, then for example `python3 test/play.py /tmp/out`. `HW_URL`, `HW_PORT` (Chrome's debugging port) and `HW_CHROME` (path to Chrome) can be set in the environment.
+Run them with `python3 -m http.server 8377` in this folder, then for example `python3 test/play.py /tmp/out`. `HW_URL`, `HW_PORT` (Chrome's debugging port), `HW_CHROME` (path to Chrome) and `HW_CHROME_ARGS` (extra Chrome flags, for example a proxy) can be set in the environment.
 
 ## Publishing
 - Live at https://1236benjamin-blip.github.io/hangry-worms/ (GitHub Pages, `main` branch, root folder). Repo: https://github.com/1236benjamin-blip/hangry-worms
@@ -140,7 +140,7 @@ Run them with `python3 -m http.server 8377` in this folder, then for example `py
 
 ## Known issues / not done
 - Not yet tested on a real phone or with a real controller (only emulated touch and a simulated gamepad). Button sizes, stick feel, the 0.6 s bump time and frame rate on an older phone all want a real hand. In 2-player on one phone each half is only 333 to 466 px wide: playable in emulation, cramped in theory.
-- The real PeerJS cloud could not be reached from the machine these changes were made on, so internet play with the new wire format (version 4) is tested only through the in-page loopback and the two-tab stand-in, not through real PeerJS.
+- Online over the real PeerJS cloud is tested between tabs of one browser (`test/online.py ... b` and the online part of `test/match.py`, both passing with wire format 4), not yet between two real phones on different networks.
 - iPhone Safari cannot go true fullscreen; "Add to Home Screen" gives the cleanest view. Android goes fullscreen and locks landscape when a game starts.
 - Online uses the free public PeerJS server (STUN plus PeerJS's best-effort free TURN). Two players behind strict mobile-carrier or corporate NATs may fail to connect (there is no paid relay). Same Wi-Fi always works.
 - If the host's phone goes to sleep or the browser is fully backgrounded on mobile, clients see WAITING FOR HOST and leave after 45 s; if the host quits, the room ends. A client that goes silent is idled after 1.5 s and removed after 30 s.

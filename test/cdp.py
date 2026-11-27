@@ -84,7 +84,7 @@ class Browser:
         port = port or int(os.environ.get("HW_PORT", "9377")); self.port = port
         self.p = subprocess.Popen([CHROME, "--headless=new", "--no-sandbox", "--remote-debugging-port=%d" % port, "--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check",
                                    "--autoplay-policy=no-user-gesture-required", "--mute-audio", "--window-size=1280,720", "--disable-background-timer-throttling",
-                                   "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--remote-allow-origins=*"] + list(extra) + ["about:blank"],
+                                   "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--remote-allow-origins=*"] + list(extra) + os.environ.get("HW_CHROME_ARGS", "").split() + ["about:blank"],
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             try: urllib.request.urlopen("http://127.0.0.1:%d/json/version" % port, timeout=1); break
