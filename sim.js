@@ -7,6 +7,7 @@
     MIN_MASS: 6, SHIELD: 4, BOOST_MULT: 1.55, BOOST_COST: 6,
     MATCH_T: 300, LIVES: 3, KILL_PTS: 20, ABIL_CD: 60, ABIL_START: 20, ZONE_T: 10, STUCK_T: 10,
     FART_R: 76, PUKE_R: 68, SLOW_T: 4.5, SLOW_MULT: 0.5, VEG_LOSS: 0.1, TRIP_T: 10, MAX_PLAYERS: 4,
+    VEG_ABIL: 10, SHROOM_ABIL: 15,   // the upside of eating your greens: seconds knocked off the fart / puke countdown
     BIG: 3              // food worth this much or more is drawn double size
   };
   // what a snack / meal / feast is worth (FOOD[].v in sprites.js is the class: 1, 2 or 3)
@@ -60,13 +61,20 @@
   // worm paint jobs live with the art (sprites.js): HW.SKINS[ch].colors replaces the colours above when present
   if (HW.SKINS) CHARS.forEach((c, i) => { if (HW.SKINS[i] && HW.SKINS[i].colors) c.colors = HW.SKINS[i].colors; });
 
+  // every gun there is, by kind: the five character guns, then the special guns you pick up (power.js).
+  // A bullet's ch field is its gun's kind.
+  const SGUNS = HW.SGUNS || [], POWERS = HW.POWERS || [], PCFG = HW.PCFG || {};
+  const GUNS = HW.GUNS = CHARS.map(c => c.gun).concat(SGUNS);
+  HW.gunOf = w => w.sg ? SGUNS[w.sg - 1] : CHARS[w.ch].gun;                 // the gun a worm is holding right now
+  HW.gunSprOf = w => w.sg ? HW.sgunSpr[w.sg - 1] : HW.gunSpr[w.ch];
+
   const rnd = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const angDiff = (a, b) => { let d = (a - b) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
   HW.util = { rnd, clamp, angDiff };
 
   HW.segCount = mass => clamp(Math.round(9 + mass * 0.42), 9, 240);
-  HW.wormR = (ch, mass) => CHARS[ch].baseR + Math.min(5, Math.floor(mass / 90));
+  HW.wormR = (ch, mass, big) => { const r = CHARS[ch].baseR + Math.min(5, Math.floor(mass / 90)); return big ? Math.round(r * POWERS[1].scale) : r; };
 
   const PT = { x: 0, y: 0, nx: 0, ny: 0 };   // scratch for MAP.push
   // shared by host + client: make body points follow the head
@@ -85,7 +93,7 @@
       if (b.y < y0) y0 = b.y; else if (b.y > y1) y1 = b.y;
     }
     w.bx0 = x0; w.by0 = y0; w.bx1 = x1; w.by1 = y1;
-    w.r = HW.wormR(w.ch, w.mass);
+    w.r = HW.wormR(w.ch, w.mass, w.big > 0);
   };
 
   // ---- head movement. Shared by the host's step and by an online client predicting its own worm (net.js),
@@ -100,7 +108,11 @@
   // px/s right now (w.boosting must already be decided)
   HW.headSpeed = function (w) {
     if (w.stuck > 0) return 0;
-    return CHARS[w.ch].speed * (w.boosting ? CFG.BOOST_MULT : 1) * (w.slow > 0 ? CFG.SLOW_MULT : 1);
+    let sp = CHARS[w.ch].speed * (w.boosting ? CFG.BOOST_MULT : 1) * (w.slow > 0 ? CFG.SLOW_MULT : 1);
+    if (w.rage > 0) sp *= POWERS[0].speed;                    // rampage
+    if (w.chill > 0) sp *= PCFG.CHILL_MULT;                   // hit by the freeze ray
+    if (w.boosting && w.sauce > 0) sp *= POWERS[3].boost;     // hot sauce
+    return sp;
   };
   // advance the head. Walls and obstacles do not kill: the worm slides and its nose is nudged along the surface.
   HW.moveHead = function (w, sp, dt) {
@@ -115,9 +127,11 @@
     }
   };
 
+  // per-competitor counters for the end-of-match awards
+  const newStats = () => ({ veg: 0, shr: 0, shots: 0, hits: 0, pick: 0, boost: 0, taunt: 0, streak: 0 });
   function newState() {
     return { t: 0, worms: [], items: new Map(), bullets: [], zones: [], players: [], nextId: 1, events: [], adds: [], rems: [], respawns: [], botTimer: 0,
-      comps: [], nextCid: 1, match: { t: CFG.MATCH_T, over: false, overT: 0, n: 1, reason: '' }, autoNext: 0 };
+      comps: [], nextCid: 1, match: { t: CFG.MATCH_T, over: false, overT: 0, n: 1, reason: '', frenzy: false, awards: [] }, autoNext: 0, leader: 0 };
   }
 
   // opt.diff: bot difficulty, an index into HW.DIFFS (default 1)
@@ -128,14 +142,29 @@
     for (let i = 0; i < CFG.AMMO; i++) this.dropItem('a');
     for (let i = 0; i < CFG.VEG; i++) this.dropItem('v');
     for (let i = 0; i < CFG.SHROOM; i++) this.dropItem('m');
-    S.counts = { f: CFG.FOOD, a: CFG.AMMO, v: CFG.VEG, m: CFG.SHROOM };
+    S.counts = { f: CFG.FOOD, a: CFG.AMMO, v: CFG.VEG, m: CFG.SHROOM, p: 0, g: 0, x: 0 };
+    this.stockPickups();
     this.fillBots();
   }
   const P = Sim.prototype;
   // a crate, veggie or mushroom somewhere free. Nearly half the veggies turn up in the salad bar.
   P.dropItem = function (k) {
     const p = MAP.spot(k === 'a' ? 80 : 120, 26, k === 'v' && Math.random() < 0.45 ? MAP.zones[2] : null);
-    return this.addItem(k, k === 'v' ? (Math.random() * HW.vegSpr.length) | 0 : k === 'm' ? (Math.random() * HW.shroomSpr.length) | 0 : 0, p.x, p.y, 0);
+    let type = 0;
+    if (k === 'v') type = (Math.random() * HW.vegSpr.length) | 0; else if (k === 'm') type = (Math.random() * HW.shroomSpr.length) | 0;
+    else if (k === 'g') type = (Math.random() * SGUNS.length) | 0;
+    else if (k === 'p') { type = (Math.random() * POWERS.length) | 0; if (type === 0 && Math.random() < 0.35) type = 1 + ((Math.random() * (POWERS.length - 1)) | 0); }   // the pizza is the rare one
+    const it = this.addItem(k, type, p.x, p.y, k === 'x' ? HW.GOLD.v : 0);
+    if (k === 'p' || k === 'g' || k === 'x') this.ev('drop', it.x, it.y, k, type);
+    return it;
+  };
+  // power-ups, special guns and the golden burger do not start on the map: they turn up over the first half minute
+  P.stockPickups = function () {
+    const S = this.S; if (!POWERS.length) return;
+    S.respawns = S.respawns.filter(r => r.k !== 'p' && r.k !== 'g' && r.k !== 'x');
+    for (let i = S.counts.p; i < PCFG.POWERS; i++) S.respawns.push({ k: 'p', t: rnd(8, 28) });
+    for (let i = S.counts.g; i < PCFG.GUNS; i++) S.respawns.push({ k: 'g', t: rnd(6, 24) });
+    if (!S.counts.x) S.respawns.push({ k: 'x', t: rnd(20, 40) });
   };
 
   P.ev = function (k, x, y) { const e = [k, Math.round(x), Math.round(y)]; for (let i = 3; i < arguments.length; i++) e.push(arguments[i]); this.S.events.push(e); };
@@ -206,6 +235,7 @@
       id: S.nextId++, ch, variant, pid, isBot: pid < 0, x: pos.x, y: pos.y, ang, aim: ang,
       mass: C.startMass, pts: [], r: C.baseR, alive: true, shield: CFG.SHIELD, ammo: C.gun.start, cd: 1, // cd 1: no shot (and so no lost shield) in the first second, even with fire held
       abil: C.ability ? CFG.ABIL_START : 0, stuck: 0, pukeImm: 0, slow: 0, trip: 0, boosting: false, boostAcc: 0, kills: 0,
+      rage: 0, big: 0, guard: 0, sauce: 0, chill: 0, sg: 0, sgT: 0, streak: 0, tauntT: 0,   // power-ups, special gun, kill streak
       mercy: pid >= 0 ? CFG.SHIELD + HW.DIFFS[S.diff].mercy : 0,   // bots leave a freshly spawned human alone for this long (see bots.js)
       inp: { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false }, bot: null
     };
@@ -222,7 +252,7 @@
   // Every seat in the arena is a competitor: one per human, the rest are bot seats that keep the
   // same worm for the whole match (bots respawn freely, humans have CFG.LIVES lives).
   P.newComp = function (pid, ch) {
-    const S = this.S, c = { cid: S.nextCid++, pid, ch, variant: 0, kills: 0, peak: 0, score: 0, lives: CFG.LIVES, out: false, worm: null };
+    const S = this.S, c = { cid: S.nextCid++, pid, ch, variant: 0, kills: 0, pts: 0, peak: 0, score: 0, lives: CFG.LIVES, out: false, worm: null, st: newStats() };   // pts: points from kills (bounties and streaks included)
     S.comps.push(c); return c;
   };
   P.attach = function (c, w) { c.worm = w; w.comp = c; c.variant = w.variant; return w; };
@@ -244,9 +274,25 @@
     for (const c of seats) if (!c.worm || !c.worm.alive) this.attach(c, this.spawnWorm(c.ch, -1));
   };
   P.board = function () { return this.S.comps.slice().sort((a, b) => b.score - a.score || b.kills - a.kills); };
+  // ----- end of match awards: one line each, the sillier the better. [cid, title, number] -----
+  P.awards = function () {
+    const S = this.S, out = [], best = (f, min) => { let b = null, bv = min; for (const c of S.comps) { const v = f(c.st, c); if (v > bv) { bv = v; b = c; } } return b ? [b, bv] : null; };
+    const add = (r, title, fmt) => { if (r) out.push([r[0].cid, title, fmt ? fmt(r[1]) : Math.round(r[1]), r[0].pid >= 0 ? 1 : 0]); };
+    add(best(s => s.veg, 1.5), 'RABBIT FOOD AWARD: MOST VEGGIES EATEN');
+    add(best(s => s.shr, 1.5), 'SPACE CADET: MOST MUSHROOMS');
+    add(best(s => s.shots >= 12 ? Math.min(1, s.hits / s.shots) : 0, 0.05), 'SHARPSHOOTER: BEST AIM', v => Math.round(v * 100) + '%');
+    add(best(s => s.shots >= 12 ? s.shots - s.hits : 0, 8), 'BARN DOOR SAFE: MOST SHOTS MISSED');
+    add(best(s => s.pick, 1.5), 'HOARDER: MOST PICKUPS');
+    add(best(s => s.boost, 8), 'LEAD FOOT: MOST BOOSTING', v => Math.round(v) + 'S');
+    add(best(s => s.taunt, 2.5), 'BIG MOUTH: MOST TAUNTS');
+    add(best(s => s.streak, 1.5), 'HANGRIEST: BEST KILL STREAK');
+    add(best((s, c) => c.peak, 80), 'ABSOLUTE UNIT: BIGGEST WORM');
+    // awards won by a human are shown first; four at most
+    return out.sort((a, b) => b[3] - a[3]).slice(0, 4).map(a => a.slice(0, 3));
+  };
   P.endMatch = function (reason) {
     const S = this.S, M = S.match; if (M.over) return;
-    M.over = true; M.overT = 0; M.reason = reason; M.t = Math.max(0, M.t);
+    M.over = true; M.overT = 0; M.reason = reason; M.t = Math.max(0, M.t); M.awards = this.awards();
     this.ev('over', 0, 0, reason);
   };
   // next match: same arena and seats, everything else fresh
@@ -254,10 +300,10 @@
     const S = this.S;
     for (const w of S.worms) w.alive = false;
     S.worms.length = 0; S.bullets.length = 0; S.zones.length = 0;
-    for (const c of S.comps) { c.kills = 0; c.peak = 0; c.score = 0; c.lives = CFG.LIVES; c.out = false; c.worm = null; }
+    for (const c of S.comps) { c.kills = 0; c.pts = 0; c.peak = 0; c.score = 0; c.lives = CFG.LIVES; c.out = false; c.worm = null; c.st = newStats(); }
     for (const p of S.players) { p.worm = null; p.deadT = 0; p.wantSpawn = true; p.everSpawned = false; p.lastKiller = ''; p.lastCause = ''; p.lastScore = 0; if (p.inp) p.inp.abil = false; }
-    S.match = { t: CFG.MATCH_T, over: false, overT: 0, n: S.match.n + 1, reason: '' };
-    S.botTimer = 0; this.ev('go', 0, 0);
+    S.match = { t: CFG.MATCH_T, over: false, overT: 0, n: S.match.n + 1, reason: '', frenzy: false, awards: [] };
+    S.botTimer = 0; this.stockPickups(); this.ev('go', 0, 0);
   };
 
   // ----- players -----
@@ -267,7 +313,7 @@
     S.players.push(p); p.variant = this.claimVariant(p);
     p.comp = this.newComp(pid, ch); p.comp.variant = p.variant;
     // the first human starts the match clock from the top
-    if (S.players.length === 1 && !S.match.over) { S.match.t = CFG.MATCH_T; for (const c of S.comps) { c.kills = 0; c.peak = c.worm && c.worm.alive ? c.worm.mass : 0; c.score = Math.round(c.peak); } }
+    if (S.players.length === 1 && !S.match.over) { S.match.t = CFG.MATCH_T; for (const c of S.comps) { c.kills = 0; c.pts = 0; c.st = newStats(); c.peak = c.worm && c.worm.alive ? c.worm.mass : 0; c.score = Math.round(c.peak); } }
     this.fillBots(); // make room: a bot seat is given up for the human
     return p;
   };
@@ -288,7 +334,18 @@
       const p = w.pts[Math.floor(i * w.pts.length / n)];
       this.addFood(p.x + rnd(-7, 7), p.y + rnd(-7, 7), v);
     }
-    if (killer && killer !== w && killer.alive) { killer.kills++; if (killer.comp && cause !== 'left') { killer.comp.kills++; killer.comp.score = Math.round(killer.comp.peak) + CFG.KILL_PTS * killer.comp.kills; } }
+    if (killer && killer !== w && killer.alive) {
+      killer.kills++;
+      if (killer.comp && cause !== 'left') {
+        const c = killer.comp; c.kills++;
+        // the crowned leader has a bounty on its head; kills in a row without dying earn a bonus on top
+        let pts = CFG.KILL_PTS; if (w.id === S.leader) { pts *= HW.BOUNTY || 1; this.ev('bounty', w.x, w.y, killer.id, pts); }
+        killer.streak++; if (killer.streak > c.st.streak) c.st.streak = killer.streak;
+        for (const q of HW.STREAKS || []) if (q[0] === killer.streak) { pts += q[2]; this.ev('streak', killer.x, killer.y, killer.id, killer.streak, q[2], killer.pid, killer.ch); }
+        c.pts += pts; c.score = Math.round(c.peak) + c.pts;
+        if (killer.bot && Math.random() < 0.3) killer.inp.taunt = true;   // bots gloat too
+      }
+    }
     if (w.pid >= 0 && w.comp && cause !== 'left') { w.comp.lives = Math.max(0, w.comp.lives - 1); if (w.comp.lives <= 0) w.comp.out = true; }
     const k = killer && killer !== w ? killer : null;
     this.ev('die', w.x, w.y, w.id, k ? k.id : 0, cause, w.ch, k ? k.ch : -1, w.pid, k ? k.pid : -1, w.variant, Math.round(w.mass));
@@ -296,6 +353,9 @@
   };
   P.damage = function (w, dmg, owner, x, y) {
     if (!w.alive || w.shield > 0) return;
+    if (w.guard > 0) { this.ev('ping', x, y, w.id); return; }   // shot shield: nothing gets through
+    if (w.big > 0) dmg *= POWERS[1].armor;                      // supersized worms shrug half of it off
+    if (owner && owner.comp) owner.comp.st.hits++;
     const loss = Math.min(w.mass, dmg + w.mass * 0.02);
     w.mass -= loss;
     this.spill(x, y, loss * 0.75, 26);
@@ -310,7 +370,7 @@
     return best;
   };
   P.explode = function (b) {
-    const S = this.S, g = CHARS[b.ch].gun, R = g.blast;
+    const S = this.S, g = GUNS[b.ch], R = g.blast;
     for (const w of S.worms) {
       if (!w.alive || w.id === b.owner || w.shield > 0) continue;
       const q = this.nearestSeg(w, b.x, b.y, R + w.r); const d = Math.sqrt(q) - w.r;
@@ -325,10 +385,11 @@
   P.hitPoint = function (w, x, y) { let best = w.pts[0], bq = 1e12; for (const p of w.pts) { const q = (p.x - x) ** 2 + (p.y - y) ** 2; if (q < bq) { bq = q; best = p; } } return best; };
 
   P.fire = function (w) {
-    const S = this.S, g = CHARS[w.ch].gun;
+    const S = this.S, g = HW.gunOf(w);
     // w.cd sits in (-dt, 0] when a shot is due: carry the remainder so the average cadence is exactly g.interval
-    w.cd = g.interval + (w.cd > -0.05 ? w.cd : 0); w.ammo--; w.shield = 0; w.mercy = 0;
-    const mz = w.r + 6 + HW.gunSpr[w.ch].len, ca = Math.cos(w.aim), sa = Math.sin(w.aim);
+    w.cd = g.interval + (w.cd > -0.05 ? w.cd : 0); if (!w.sg) w.ammo--; w.shield = 0; w.mercy = 0;   // a special gun never runs dry, it just times out
+    if (w.comp) w.comp.st.shots++;
+    const mz = w.r + 6 + HW.gunSprOf(w).len, ca = Math.cos(w.aim), sa = Math.sin(w.aim);
     const mx = w.x + ca * mz, my = w.y + sa * mz;
     // Bullets leave from the muzzle, which is well in front of the head. If something is already
     // between the head and the muzzle (a body brushing past), start there so the shot cannot skip it.
@@ -348,9 +409,9 @@
     for (let i = 0; i < g.pellets; i++) {
       const a = w.aim + wob + (g.pellets > 1 ? (i / (g.pellets - 1) - 0.5) * g.spread + rnd(-0.04, 0.04) : rnd(-g.spread, g.spread));
       const sp = g.speed * (g.pellets > 1 ? rnd(0.85, 1.1) : 1);
-      S.bullets.push({ id: S.nextId++, ch: w.ch, owner: w.id, x: bx, y: by, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, hit: null, pierce: g.pierce || 0, c: (Math.random() * 5) | 0 });
+      S.bullets.push({ id: S.nextId++, ch: g.kind, owner: w.id, x: bx, y: by, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, age: 0, hit: null, pierce: g.pierce || 0, c: (Math.random() * 5) | 0 });
     }
-    this.ev('shot', mx, my, w.ch, w.id);
+    this.ev('shot', mx, my, g.kind, w.id);
   };
   P.useAbility = function (w) {
     const S = this.S, C = CHARS[w.ch]; if (!C.ability || w.abil > 0 || w.stuck > 0) return;
@@ -369,7 +430,7 @@
 
   // nearest enemy for keyboard / trigger auto-aim
   P.autoAim = function (w) {
-    const g = CHARS[w.ch].gun, R = Math.min(g.range, 300); let best = null, bs = 1e9;
+    const g = HW.gunOf(w), R = Math.min(g.range, 300); let best = null, bs = 1e9;
     for (const o of this.S.worms) {
       if (o === w || !o.alive || o.shield > 0) continue;
       if (w.x < o.bx0 - R || w.x > o.bx1 + R || w.y < o.by0 - R || w.y > o.by1 + R) continue;
@@ -390,6 +451,8 @@
     if (S.players.length) {
       M.t -= dt;
       if (M.t <= 0) { this.endMatch('time'); return; }
+      // last minute: food and pickups pour in
+      if (HW.FRENZY && !M.frenzy && M.t <= HW.FRENZY.t) { M.frenzy = true; this.ev('frenzy', 0, 0); }
       if (S.players.every(p => p.comp.out && p.deadT > 1.6)) { this.endMatch('lives'); return; }
     }
     // players: respawn handling
@@ -401,7 +464,14 @@
       } else { if (p.inp) p.worm.inp = p.inp; }
       if (p.comp.score > p.best) p.best = p.comp.score;
     }
-    for (const c of S.comps) { const w = c.worm; if (w && w.alive && w.mass > c.peak) { c.peak = w.mass; c.score = Math.round(c.peak) + CFG.KILL_PTS * c.kills; } }
+    let lead = null;
+    for (const c of S.comps) {
+      const w = c.worm; if (!w || !w.alive) continue;
+      if (w.mass > c.peak) { c.peak = w.mass; c.score = Math.round(c.peak) + c.pts; }
+      if (!lead || w.mass > lead.mass) lead = w;
+    }
+    S.leader = lead && lead.mass > 60 ? lead.id : 0;   // the crowned worm (same rule as the crown in render.js): worth a bounty
+    const rush = M.frenzy ? HW.FRENZY.rate : 1;
     // bot respawns
     S.botTimer -= dt; if (S.botTimer <= 0) { S.botTimer = 0.8; this.fillBots(); }
 
@@ -416,9 +486,19 @@
       // timers
       if (w.shield > 0) w.shield -= dt; if (w.cd > 0) w.cd -= dt; if (w.abil > 0) w.abil -= dt;
       if (w.slow > 0) w.slow -= dt; if (w.trip > 0) w.trip -= dt; if (w.pukeImm > 0) w.pukeImm -= dt; if (w.mercy > 0) w.mercy -= dt;
+      // power-ups and the special gun run out
+      if (w.rage > 0 && (w.rage -= dt) <= 0) this.ev('poweroff', w.x, w.y, w.id, 0);
+      if (w.big > 0 && (w.big -= dt) <= 0) this.ev('poweroff', w.x, w.y, w.id, 1);
+      if (w.guard > 0 && (w.guard -= dt) <= 0) this.ev('poweroff', w.x, w.y, w.id, 2);
+      if (w.sauce > 0 && (w.sauce -= dt) <= 0) this.ev('poweroff', w.x, w.y, w.id, 3);
+      if (w.chill > 0) w.chill -= dt; if (w.tauntT > 0) w.tauntT -= dt;
+      if (w.sg && (w.sgT -= dt) <= 0) { w.sg = 0; w.sgT = 0; w.cd = Math.max(w.cd, 0.25); this.ev('gunoff', w.x, w.y, w.id); }
+      if (I.taunt) { I.taunt = false; if (w.tauntT <= 0 && HW.TAUNTS) { w.tauntT = 2.5; if (w.comp) w.comp.st.taunt++; this.ev('taunt', w.x, w.y, w.id, (Math.random() * HW.TAUNTS.length) | 0); } }
       // move
-      w.boosting = !!(I.boost && w.mass > CFG.MIN_MASS + 4 && w.stuck <= 0);
-      if (w.boosting) {
+      const hot = w.sauce > 0;   // hot sauce: boosting is free
+      w.boosting = !!(I.boost && (hot || w.mass > CFG.MIN_MASS + 4) && w.stuck <= 0);
+      if (w.boosting && w.comp) w.comp.st.boost += dt;
+      if (w.boosting && !hot) {
         const c = CFG.BOOST_COST * dt; w.mass -= c; w.boostAcc += c * 0.6;
         if (w.boostAcc >= 1) { w.boostAcc -= 1; const tl = w.pts[w.pts.length - 1]; this.addFood(tl.x + rnd(-4, 4), tl.y + rnd(-4, 4), 1); }
       }
@@ -427,7 +507,7 @@
       HW.moveHead(w, sp, dt);
       HW.follow(w);
       // fire / ability
-      if (I.fire && w.cd <= 0) { if (w.ammo > 0) this.fire(w); else if (!w.dryT || S.t - w.dryT > 0.5) { w.dryT = S.t; this.ev('dry', w.x, w.y, w.id); } }
+      if (I.fire && w.cd <= 0) { if (w.ammo > 0 || w.sg) this.fire(w); else if (!w.dryT || S.t - w.dryT > 0.5) { w.dryT = S.t; this.ev('dry', w.x, w.y, w.id); } }
       if (I.abil) { I.abil = false; this.useAbility(w); }
     }
 
@@ -439,10 +519,10 @@
         const dx = w.x - it.x, dy = w.y - it.y; if (dx > 70 || dx < -70 || dy > 70 || dy < -70) continue;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (it.k === 'f') {
-          const er = w.r + CHARS[w.ch].eat;
+          const er = w.r + CHARS[w.ch].eat * (w.big > 0 ? POWERS[1].eat : 1);
           if (d < w.r + (it.v >= CFG.BIG ? 7 : 3)) { eatList.push(it, w); break; }
           if (d < er) { const k = Math.min(1, 260 * dt / d); it.x += dx * k; it.y += dy * k; }
-        } else if (d < w.r + (it.k === 'a' ? 9 : 11)) { eatList.push(it, w); break; }
+        } else if (d < w.r + (it.k === 'a' ? 9 : it.k === 'v' || it.k === 'm' ? 11 : 14)) { eatList.push(it, w); break; }
       }
     }
     for (let i = 0; i < eatList.length; i += 2) {
@@ -452,16 +532,39 @@
       else if (it.k === 'a') { const g = CHARS[w.ch].gun; w.ammo = Math.min(g.max, w.ammo + g.pickup); this.ev('ammo', it.x, it.y, w.id); S.respawns.push({ k: 'a', t: 7 }); }
       else if (it.k === 'v') {
         // veggies: slow, and you shrink (the mass is gone, not dropped)
-        if (w.shield <= 0) { const loss = Math.max(0, Math.min(w.mass - CFG.MIN_MASS - 2, 3 + w.mass * CFG.VEG_LOSS)); w.mass -= loss; w.slow = CFG.SLOW_T; this.ev('veg', it.x, it.y, w.id, Math.round(loss)); }
+        if (w.shield <= 0) {
+          const loss = Math.max(0, Math.min(w.mass - CFG.MIN_MASS - 2, 3 + w.mass * CFG.VEG_LOSS)); w.mass -= loss; w.slow = CFG.SLOW_T;
+          const cut = w.abil > 0 ? Math.min(w.abil, CFG.VEG_ABIL) : 0; w.abil -= cut; if (w.comp) w.comp.st.veg++;   // ...but your fart / puke is ready sooner
+          this.ev('veg', it.x, it.y, w.id, Math.round(loss), Math.round(cut));
+        }
         S.respawns.push({ k: 'v', t: 5 });
       }
-      else if (it.k === 'm') { if (w.shield <= 0) { w.trip = CFG.TRIP_T; this.ev('shroom', it.x, it.y, w.id); } S.respawns.push({ k: 'm', t: 8 }); }
+      else if (it.k === 'm') {
+        if (w.shield <= 0) { w.trip = CFG.TRIP_T; const cut = w.abil > 0 ? Math.min(w.abil, CFG.SHROOM_ABIL) : 0; w.abil -= cut; if (w.comp) w.comp.st.shr++; this.ev('shroom', it.x, it.y, w.id, Math.round(cut)); }
+        S.respawns.push({ k: 'm', t: 8 });
+      }
+      else if (it.k === 'p') {
+        // power-up: 0 rampage, 1 supersize, 2 shot shield, 3 hot sauce
+        const P0 = POWERS[it.type] || POWERS[0];
+        if (it.type === 0) w.rage = P0.t; else if (it.type === 1) { w.big = P0.t; w.mass += P0.mass; } else if (it.type === 2) w.guard = P0.t; else w.sauce = P0.t;
+        if (w.comp) w.comp.st.pick++; this.ev('power', it.x, it.y, w.id, it.type, w.pid);
+        S.respawns.push({ k: 'p', t: rnd(PCFG.POWER_WAIT[0], PCFG.POWER_WAIT[1]) });
+      }
+      else if (it.k === 'g') {
+        w.sg = it.type + 1; w.sgT = SGUNS[it.type].t; w.cd = Math.min(w.cd, 0.2); if (w.comp) w.comp.st.pick++;
+        this.ev('gun', it.x, it.y, w.id, it.type, w.pid);
+        S.respawns.push({ k: 'g', t: rnd(PCFG.GUN_WAIT[0], PCFG.GUN_WAIT[1]) });
+      }
+      else if (it.k === 'x') {
+        w.mass += it.v; if (w.comp) w.comp.st.pick++; this.ev('gold', it.x, it.y, w.id, it.v, w.pid);
+        S.respawns.push({ k: 'x', t: rnd(HW.GOLD.wait[0], HW.GOLD.wait[1]) });
+      }
     }
     for (let i = S.respawns.length - 1; i >= 0; i--) {
-      const r = S.respawns[i]; r.t -= dt; if (r.t > 0) continue; S.respawns.splice(i, 1);
+      const r = S.respawns[i]; r.t -= dt * (r.k === 'p' || r.k === 'g' || r.k === 'x' ? rush : 1); if (r.t > 0) continue; S.respawns.splice(i, 1);
       this.dropItem(r.k);
     }
-    if (S.counts.f < CFG.FOOD && Math.random() < dt * 5) this.addFood();
+    if (S.counts.f < CFG.FOOD * (rush > 1 ? 1.25 : 1) && Math.random() < dt * 5 * rush) this.addFood();
     if (S.counts.f > 520) {
       // too much litter: clear the oldest crumbs first, then anything, so the cap always holds
       let n = 0; for (const it of S.items.values()) { if (it.k === 'f' && it.v < CFG.BIG) { this.remItem(it); if (++n > 20) break; } }
@@ -486,8 +589,12 @@
     if (touch.length) {
       const dead = [];
       const mark = (w, by, cause) => { for (let i = 0; i < dead.length; i += 3) if (dead[i] === w) return; dead.push(w, by, cause); };
-      // 1) a head that ran into a body dies, whatever else is going on
-      for (let i = 0; i < touch.length; i += 3) if (touch[i + 2] > 0) mark(touch[i], touch[i + 1], 'crash');
+      // 1) a head that ran into a body dies, whatever else is going on. Except on a rampage: then the
+      //    worm that got run into dies (unless it is rampaging too, in which case the usual rule holds).
+      for (let i = 0; i < touch.length; i += 3) {
+        if (touch[i + 2] <= 0) continue; const a = touch[i], b = touch[i + 1];
+        if (a.rage > 0 && !(b.rage > 0)) mark(b, a, 'rampage'); else mark(a, b, 'crash');
+      }
       // 2) head against head: the lighter worm dies, equal worms both die. A worm that has just
       //    crashed into a body has already lost: it cannot also win (or lose) a head-on this step.
       const n = dead.length;
@@ -495,8 +602,11 @@
         if (touch[i + 2] !== 0) continue; const a = touch[i], b = touch[i + 1];
         let out = false; for (let k = 0; k < n; k += 3) if (dead[k] === a || dead[k] === b) { out = true; break; }
         if (out) continue;
-        if (a.mass <= b.mass) mark(a, b, 'bonk');
-        if (b.mass <= a.mass) mark(b, a, 'bonk');
+        // rampage beats supersize beats nothing; between equals the heavier worm wins
+        const pa = a.rage > 0 ? 2 : a.big > 0 ? 1 : 0, pb = b.rage > 0 ? 2 : b.big > 0 ? 1 : 0;
+        if (pa > pb) mark(b, a, pa === 2 ? 'rampage' : 'bonk');
+        else if (pb > pa) mark(a, b, pb === 2 ? 'rampage' : 'bonk');
+        else { if (a.mass <= b.mass) mark(a, b, 'bonk'); if (b.mass <= a.mass) mark(b, a, 'bonk'); }
       }
       for (let i = 0; i < dead.length; i += 3) this.kill(dead[i], dead[i + 1], dead[i + 2]);
     }
@@ -516,9 +626,9 @@
 
     // bullets
     for (let i = S.bullets.length - 1; i >= 0; i--) {
-      const b = S.bullets[i], g = CHARS[b.ch].gun; let dead = false;
+      const b = S.bullets[i], g = GUNS[b.ch]; let dead = false; b.age += dt;
       if (g.accel) { const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy), nv = Math.min(g.vmax, v + g.accel * dt); if (v > 0) { b.vx *= nv / v; b.vy *= nv / v; } }
-      const steps = 2;
+      const steps = g.speed > 600 ? 4 : 2;   // the ray gun's bolt is fast: smaller steps so it cannot skip a thin worm
       for (let s = 0; s < steps && !dead; s++) {
         b.x += b.vx * dt / steps; b.y += b.vy * dt / steps;
         if (b.x < 0 || b.y < 0 || b.x > CFG.W || b.y > CFG.H) { dead = true; break; }
@@ -529,6 +639,8 @@
           const lim = g.br + w.r; if (this.nearestSeg(w, b.x, b.y, lim) > lim * lim) continue;
           if (g.blast) { dead = true; break; }
           this.damage(w, g.dmg, S.worms.find(o => o.id === b.owner), b.x, b.y);
+          if (g.chill && w.alive && w.guard <= 0) { if (w.chill <= 0) this.ev('chill', w.x, w.y, w.id); w.chill = g.chill; }   // freeze ray
+          if (w.guard > 0) { dead = true; break; }   // the shot shield stops even shots that pierce
           if (b.pierce > 0) { b.pierce--; (b.hit = b.hit || []).push(w.id); } else { dead = true; break; }
         }
       }

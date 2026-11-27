@@ -75,7 +75,8 @@
       ['EAT JUNK FOOD TO GROW. RUN YOUR HEAD INTO ANOTHER WORM AND YOU DIE.', '#fff'],
       ['SHOOT WORMS TO KNOCK FOOD OUT OF THEM. AMMO COMES FROM CRATES.', '#fff'],
       ['COUNTERS, TABLES AND CRATES BLOCK SHOTS AND WORMS. HIDE BEHIND THEM.', '#fff'],
-      ['VEGGIES SHRINK YOU AND SLOW YOU DOWN. MUSHROOMS MAKE EVERYTHING WOBBLY.', '#9cf08a'],
+      ['VEGGIES SHRINK AND SLOW YOU, MUSHROOMS GO WOBBLY. BOTH CHARGE YOUR ABILITY FASTER.', '#9cf08a'],
+      ['GLOWING PICKUPS: PIZZA = RAMPAGE, FRIES = SUPERSIZE, SHIELD, HOT SAUCE, SPECIAL GUNS.', '#ffd23f'],
       ['FART: TOXIC CLOUD, KILLS ANY OTHER WORM.  PUKE: STICKY PUDDLE, STUCK 10 SEC.', '#d7e84a'],
       ['PHONE: LEFT THUMB MOVES. RIGHT THUMB AIMS AND SHOOTS. BOOST + ABILITY BUTTONS.', '#9be7ff'],
       ['KEYBOARD: WASD OR ARROWS MOVE. MOUSE AIMS, CLICK SHOOTS (OR SPACE).', '#9be7ff'],
@@ -185,6 +186,9 @@
       if (q.score > (App.bestBefore || 0) && App.locals.length === 1) lines.push(px('NEW BEST SCORE!', '#ffd23f', 1));
     }
     if (lines.length) ui.appendChild(el('div', 'col', lines));
+    // the silly awards
+    const aw = (M.awards || []).map(a => { const q = (G.comps || []).find(c => c.cid === a[0]); return q ? px(a[1] + ' - ' + compName(q) + ' (' + a[2] + ')', App.locals.some(l => l.player && l.player.pid === q.pid) ? '#ffd23f' : '#c3b8ff', 0.85) : null; }).filter(Boolean);
+    if (aw.length) ui.appendChild(el('div', 'panel c', aw));
     const row = [];
     if (Net.role !== 'client') { const b = btn('PLAY AGAIN', () => { if (App.sim) App.sim.restart(); }, 'go', 1.6); b.dataset.def = '1'; row.push(b); }
     const mb = btn('MENU', quit, 'alt'); mb.dataset.back = '1'; row.push(mb);
@@ -243,6 +247,9 @@
   // ---------- events -> particles + sound ----------
   function near(x, y) { let d = 1e9; for (const l of App.locals) { const q = Math.abs(l.view.cam.x - x) + Math.abs(l.view.cam.y - y); if (q < d) d = q; } return d; }
   const mine = id => App.locals.some(l => l.me && l.me.id === id);
+  const wormOf = id => { const G = App.G; if (!G) return null; if (G.wmap) return G.wmap.get(id) || null; for (const w of G.worms) if (w.id === id) return w; return null; };
+  // big text across one player's view (their pid)
+  function banner(pid, s, c, t) { for (const l of App.locals) if (l.player && l.player.pid === pid) l.view.banner = { s, c, t: t || 2 }; }
   const FOODC = ['#ffd23f', '#f08a1c', '#e03c32', '#ff7eb6', '#fff1c9'];
   function onEvent(e) {
     const k = e[0], x = e[1], y = e[2], demo = App.mode !== 'play', d = demo ? 1e9 : near(x, y), vol = d < 480 ? Math.max(0.15, 1 - d / 480) : 0;
@@ -253,15 +260,22 @@
         else if (e[3] === 1) { if (gate('s1', 60)) Snd.noise(0.2, 0.3 * v, 2600, 400); }
         else if (e[3] === 2) { if (gate('s2', 55)) Snd.tone(700 + Math.random() * 200, 0.05, 'square', 0.06 * v, 400); }
         else if (e[3] === 3) { if (gate('s3', 60)) Snd.tone(1100, 0.1, 'triangle', 0.14 * v, 300); }
-        else if (gate('s4', 60)) { Snd.noise(0.5, 0.25 * v, 600, 2400); Snd.tone(90, 0.3, 'sawtooth', 0.1 * v, 200); }
+        else if (e[3] === 4) { if (gate('s4', 60)) { Snd.noise(0.5, 0.25 * v, 600, 2400); Snd.tone(90, 0.3, 'sawtooth', 0.1 * v, 200); } }
+        // special guns: ray gun pew, launcher whoosh, flame roar, popcorn pops, freeze shimmer
+        else if (e[3] === 5) { if (gate('s5', 70)) { Snd.tone(1900, 0.22, 'sawtooth', 0.11 * v, 180); Snd.tone(2600, 0.1, 'square', 0.05 * v, 900); } }
+        else if (e[3] === 6) { if (gate('s6', 120)) { Snd.noise(0.7, 0.34 * v, 400, 3200); Snd.tone(70, 0.45, 'sawtooth', 0.14 * v, 240); } }
+        else if (e[3] === 7) { if (gate('s7', 85)) Snd.noise(0.2, 0.2 * v, 1500 + Math.random() * 900, 500); }
+        else if (e[3] === 8) { if (gate('s8', 48)) { Snd.tone(240 + Math.random() * 140, 0.035, 'square', 0.08 * v, 110); Snd.noise(0.03, 0.1 * v, 3000); } }
+        else if (gate('s9', 80)) { Snd.tone(1400, 0.24, 'sine', 0.11 * v, 2600); Snd.tone(2100, 0.2, 'triangle', 0.06 * v, 3400, 0.03); }
         break;
       }
       case 'eat': if (mine(e[3]) && gate('eat', 45)) Snd.tone(500 + e[4] * 110 + Math.random() * 60, 0.05, 'square', 0.05, 900); break;
       case 'hit': fx.burst(x, y, FOODC, 6, 90, 0.4, 2); if (mine(e[3])) { fx.text(x, y - 10, '-' + e[4], '#ff5a4d'); if (gate('ouch', 80)) Snd.tone(220, 0.12, 'sawtooth', 0.14, 90); for (const l of App.locals) if (l.me && l.me.id === e[3]) l.view.shake = 0.2; } else if (vol && gate('hit', 50)) Snd.tone(320, 0.05, 'square', 0.05 * vol, 160); break;
       case 'puff': fx.burst(x, y, ['#ccc', '#888'], 2, 30, 0.2, 1); break;
       case 'clang': fx.burst(x, y, ['#fff', '#c9d2e0', '#8d99ae'], 4, 70, 0.25, 1); if (vol && gate('clang', 70)) Snd.tone(1500 + Math.random() * 500, 0.04, 'triangle', 0.05 * vol, 700); break;
-      case 'boom': fx.burst(x, y, ['#fff', '#ffd23f', '#f08a1c', '#e03c32', '#555'], 46, 260, 0.6, 3); fx.burst(x, y, ['#777', '#555'], 14, 90, 0.9, 4);
-        if (vol) { Snd.noise(0.7, 0.5 * vol, 1400, 90); Snd.tone(110, 0.5, 'sine', 0.3 * vol, 35); for (const l of App.locals) if (Math.abs(l.view.cam.x - x) + Math.abs(l.view.cam.y - y) < 320) l.view.shake = Math.max(l.view.shake, 0.35); } break;
+      case 'boom': { const big = e[3] > 100;   // the rocket launcher's blast is bigger and lower than Jeff's
+        fx.burst(x, y, ['#fff', '#ffd23f', '#f08a1c', '#e03c32', '#555'], big ? 70 : 46, big ? 340 : 260, big ? 0.8 : 0.6, 3); fx.burst(x, y, ['#777', '#555'], big ? 24 : 14, 90, 0.9, 4); }
+        if (vol) { const big = e[3] > 100; Snd.noise(big ? 1.1 : 0.7, 0.5 * vol, big ? 1000 : 1400, big ? 60 : 90); Snd.tone(big ? 80 : 110, big ? 0.8 : 0.5, 'sine', 0.3 * vol, big ? 28 : 35); for (const l of App.locals) if (Math.abs(l.view.cam.x - x) + Math.abs(l.view.cam.y - y) < 320) l.view.shake = Math.max(l.view.shake, 0.35); } break;
       case 'die': {
         const vc = CHARS[e[6]], cols = vc.colors[e[10] % 4]; fx.burst(x, y, [cols[0], cols[1], '#fff', '#e03c32'], 30, 170, 0.7, 3);
         if (demo) break;
@@ -270,17 +284,53 @@
         if (meV) { Snd.tone(400, 0.6, 'sawtooth', 0.16, 50); saveBest(); for (const l of App.locals) if (l.player && l.player.pid === e[8]) l.view.shake = 0.5; }
         if (meK) { Snd.tone(523, 0.1, 'square', 0.1); Snd.tone(784, 0.18, 'square', 0.1, 0, 0.1); }
         if (e[5] === 'left') break;
-        const kn = e[7] >= 0 ? CHARS[e[7]].name : '', vn = vc.name, verb = { fart: ' GASSED ', puke: ' DROWNED ', shot: ' SHOT ', crash: ' ATE ', bonk: ' FLATTENED ' }[e[5]] || ' GOT ';
+        const kn = e[7] >= 0 ? CHARS[e[7]].name : '', vn = vc.name, verb = { fart: ' GASSED ', puke: ' DROWNED ', shot: ' SHOT ', crash: ' ATE ', bonk: ' FLATTENED ', rampage: ' RAN OVER ' }[e[5]] || ' GOT ';
         if (kn && (meV || meK || e[8] >= 0 || e[9] >= 0 || d < 380)) fx.feed.push({ s: e[5] === 'crash' ? vn + ' CRASHED INTO ' + kn : kn + verb + vn, c: meK ? '#b5e61d' : meV ? '#ff8a80' : '#bbc', t: 4 });
         break;
       }
       case 'fart': fx.burst(x, y, ['#7ed321', '#a8e04a', '#c6f06a'], 26, 120, 0.8, 3); if (vol && gate('fart', 100)) { Snd.tone(95, 0.55, 'sawtooth', 0.22 * vol, 48); Snd.noise(0.5, 0.18 * vol, 300, 120); } break;
       case 'puke': fx.burst(x, y, ['#c9c13a', '#a3b02c', '#f08a1c'], 26, 110, 0.6, 3); if (vol && gate('puke', 100)) { Snd.noise(0.45, 0.3 * vol, 700, 250); Snd.tone(260, 0.4, 'triangle', 0.14 * vol, 110); } break;
       case 'stuck': fx.text(x, y - 16, 'STUCK!', '#d7e84a'); if (mine(e[3])) Snd.tone(180, 0.4, 'triangle', 0.16, 70); break;
-      case 'veg': fx.text(x, y - 12, e[4] ? 'YUCK! -' + e[4] : 'YUCK!', '#9cf08a'); fx.burst(x, y, ['#5cc04a', '#2f7d32'], 8, 60, 0.4, 2); if (mine(e[3])) Snd.tone(200, 0.3, 'sawtooth', 0.12, 120); break;
-      case 'shroom': fx.text(x, y - 12, 'WHOA!', '#ff7eb6'); fx.burst(x, y, ['#ff7eb6', '#4cc9f0', '#ffd23f'], 12, 70, 0.6, 2); if (mine(e[3])) { Snd.tone(300, 0.6, 'sine', 0.14, 900); Snd.tone(450, 0.6, 'sine', 0.1, 150, 0.1); } break;
+      case 'veg': fx.text(x, y - 12, e[4] ? 'YUCK! -' + e[4] : 'YUCK!', '#9cf08a'); if (e[5]) fx.text(x, y - 22, CHARS[(wormOf(e[3]) || { ch: 0 }).ch].ability + ' -' + e[5] + 'S', '#d9ff7a'); fx.burst(x, y, ['#5cc04a', '#2f7d32'], 8, 60, 0.4, 2); if (mine(e[3])) Snd.tone(200, 0.3, 'sawtooth', 0.12, 120); break;
+      case 'shroom': fx.text(x, y - 12, 'WHOA!', '#ff7eb6'); if (e[4]) fx.text(x, y - 22, CHARS[(wormOf(e[3]) || { ch: 0 }).ch].ability + ' -' + e[4] + 'S', '#d9ff7a'); fx.burst(x, y, ['#ff7eb6', '#4cc9f0', '#ffd23f'], 12, 70, 0.6, 2); if (mine(e[3])) { Snd.tone(300, 0.6, 'sine', 0.14, 900); Snd.tone(450, 0.6, 'sine', 0.1, 150, 0.1); } break;
       case 'ammo': fx.text(x, y - 12, '+AMMO', '#ffd23f'); if (mine(e[3])) { Snd.tone(660, 0.07, 'square', 0.1); Snd.tone(990, 0.1, 'square', 0.1, 0, 0.07); } break;
       case 'dry': if (mine(e[3]) && gate('dry', 200)) Snd.tone(1200, 0.03, 'square', 0.06); break;
+      // ---- power-ups, special guns, golden burger ----
+      case 'drop': if (!demo && vol && gate('drop', 300)) { Snd.tone(1320, 0.12, 'sine', 0.06 * vol); Snd.tone(1760, 0.2, 'sine', 0.05 * vol, 0, 0.1); } break;   // something turned up nearby
+      case 'power': {
+        const P = HW.POWERS[e[4]] || HW.POWERS[0]; fx.burst(x, y, [P.col, '#fff', '#ffd23f'], 24, 150, 0.6, 3); fx.text(x, y - 18, P.name + '!', P.col);
+        if (demo) break; if (e[5] >= 0) banner(e[5], P.name + '!', P.col, 2);
+        if (!vol && !mine(e[3])) break; const v = mine(e[3]) ? 1 : vol * 0.5;
+        if (e[4] === 0) { [523, 659, 784, 1047, 1319].forEach((f, i) => Snd.tone(f, 0.12, 'square', 0.1 * v, 0, i * 0.07)); Snd.tone(1568, 0.35, 'square', 0.1 * v, 0, 0.35); }   // rampage fanfare
+        else if (e[4] === 1) { Snd.tone(110, 0.6, 'sawtooth', 0.16 * v, 330); Snd.tone(165, 0.6, 'square', 0.08 * v, 495, 0.05); }   // growing swell
+        else if (e[4] === 2) { Snd.tone(880, 0.3, 'sine', 0.12 * v, 1760); Snd.tone(1320, 0.3, 'triangle', 0.08 * v, 2640, 0.08); }   // bubble
+        else { Snd.noise(0.35, 0.22 * v, 800, 4000); Snd.tone(300, 0.3, 'sawtooth', 0.1 * v, 900); }   // sizzle
+        break;
+      }
+      case 'poweroff': if (mine(e[3])) { if (e[4] === 1) Snd.tone(330, 0.45, 'sawtooth', 0.12, 90); else Snd.tone(700, 0.3, 'triangle', 0.1, 220); } break;
+      case 'gun': {
+        const SG = HW.SGUNS[e[4]] || HW.SGUNS[0]; fx.burst(x, y, ['#4cc9f0', '#fff'], 18, 130, 0.5, 2); fx.text(x, y - 18, SG.name + '!', '#9be7ff');
+        if (demo) break; if (e[5] >= 0) banner(e[5], SG.name + '!', '#4cc9f0', 2);
+        if (mine(e[3]) || vol) { const v = mine(e[3]) ? 1 : vol * 0.5; Snd.noise(0.05, 0.25 * v, 2500); Snd.tone(180, 0.07, 'square', 0.12 * v, 0, 0.07); Snd.tone(660, 0.09, 'square', 0.1 * v, 0, 0.16); Snd.tone(990, 0.16, 'square', 0.1 * v, 0, 0.25); }   // click-clack, ta-da
+        break;
+      }
+      case 'gunoff': if (mine(e[3])) { Snd.tone(500, 0.1, 'square', 0.08, 250); Snd.tone(250, 0.15, 'square', 0.08, 120, 0.1); } break;
+      case 'gold': fx.burst(x, y, ['#ffd23f', '#fff', '#ffe98a'], 30, 170, 0.7, 3); fx.text(x, y - 16, 'GOLDEN BURGER +' + e[4], '#ffd23f');
+        if (!demo && e[5] >= 0) banner(e[5], 'GOLDEN BURGER! +' + e[4], '#ffd23f', 2);
+        if (!demo && (mine(e[3]) || vol)) { const v = mine(e[3]) ? 1 : vol * 0.5; [784, 988, 1175, 1568].forEach((f, i) => Snd.tone(f, 0.14, 'triangle', 0.12 * v, 0, i * 0.08)); } break;
+      case 'ping': fx.burst(x, y, ['#4cc9f0', '#fff'], 5, 110, 0.25, 2); if (vol && gate('ping', 60)) Snd.tone(1800 + Math.random() * 600, 0.07, 'triangle', 0.09 * vol, 2600); break;
+      case 'chill': fx.burst(x, y, ['#c9f2ff', '#fff', '#4cc9f0'], 12, 90, 0.5, 2); fx.text(x, y - 16, 'BRRR!', '#c9f2ff'); if (vol && gate('chill', 120)) { Snd.noise(0.18, 0.16 * vol, 6000, 2000); Snd.tone(2400, 0.2, 'sine', 0.06 * vol, 1200); } break;
+      // ---- streaks, bounty, frenzy, taunts ----
+      case 'streak': {
+        const q = (HW.STREAKS || []).find(s => s[0] === e[4]); if (!q || demo) break;
+        fx.text(x, y - 24, q[1] + '!', '#ffd23f');
+        if (e[6] >= 0) banner(e[6], q[1] + '!  +' + e[5], '#ffd23f', 2.4); else if (d < 380) fx.feed.push({ s: CHARS[e[7]].name + ': ' + q[1], c: '#ffd23f', t: 4 });
+        if (mine(e[3])) for (let i = 0; i < Math.min(5, e[4]); i++) Snd.tone(523 * Math.pow(1.19, i), 0.1, 'square', 0.1, 0, i * 0.07);
+        break;
+      }
+      case 'bounty': fx.text(x, y - 30, 'BOUNTY! +' + e[4], '#ffd23f'); fx.burst(x, y, ['#ffd23f', '#fff'], 20, 200, 0.7, 2); if (!demo && mine(e[3])) { Snd.tone(988, 0.1, 'square', 0.1); Snd.tone(1319, 0.3, 'square', 0.1, 0, 0.1); } break;
+      case 'frenzy': if (demo) break; for (const l of App.locals) l.view.banner = { s: 'FEEDING FRENZY! LAST MINUTE', c: '#ff5a4d', t: 3 }; [392, 523, 392, 523, 659].forEach((f, i) => Snd.tone(f, 0.1, 'sawtooth', 0.09, 0, i * 0.09)); break;
+      case 'taunt': { const w = wormOf(e[3]); if (w && HW.TAUNTS[e[4]]) w._say = { s: HW.TAUNTS[e[4]], t: App.t + 2.2 }; if (vol && gate('taunt', 150)) Snd.tone(mine(e[3]) ? 500 : 380, 0.07, 'square', 0.07 * (mine(e[3]) ? 1 : vol), 700); break; }
     }
   }
 
@@ -320,7 +370,7 @@
         G.myId = l.me ? l.me.id : 0; G.myInp = o;   // net.js predicts our own worm from these (see Net.clientUpdate)
         Net.sendInput(o, l.abilSeq, l.wantSpawn);
       } else {
-        p = l.player; const I = p.inp; I.mx = o.mx; I.my = o.my; I.ax = o.ax; I.ay = o.ay; I.fire = o.fire; I.boost = o.boost; I.auto = o.auto; if (o.abil) I.abil = true;
+        p = l.player; const I = p.inp; if (o.taunt) I.taunt = true; I.mx = o.mx; I.my = o.my; I.ax = o.ax; I.ay = o.ay; I.fire = o.fire; I.boost = o.boost; I.auto = o.auto; if (o.abil) I.abil = true;
         const alive = p.worm && p.worm.alive; if (!alive) { I.abil = false; if (p.deadT > 3 || (p.deadT > 1 && o.tap)) p.wantSpawn = true; }
         l.me = alive ? p.worm : null;
       }
@@ -343,6 +393,7 @@
           if (top) { const k = 1 - Math.exp(-dt * 3); v.cam.x += (top.x - v.cam.x) * k; v.cam.y += (top.y - v.cam.y) * k; }
         }
       }
+      if (v.banner && v.banner.t > 0 && !frozen) v.banner.t -= dt;
       let sx = 0, sy = 0; if (v.shake > 0) { v.shake -= dt; sx = (Math.random() - 0.5) * 10 * v.shake / 0.3; sy = (Math.random() - 0.5) * 10 * v.shake / 0.3; }
       v.meId = me ? me.id : 0; v.cam.x += sx; v.cam.y += sy; R.drawView(v, G, t); if (me) { v.px += me.x - v.cam.x; v.py += me.y - v.cam.y; } v.cam.x -= sx; v.cam.y -= sy;
       // P1 (and solo) follow In.lastKind; P2's touch controls show unless P2 is on a controller or the keyboard

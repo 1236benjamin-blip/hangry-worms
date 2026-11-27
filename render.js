@@ -87,7 +87,7 @@
     const gx = hx + ax * (r + 5), gy = hy + ay * (r + 5), arm = HW.shade(cols[0], -0.3);
     pxLine(c, hx - ay * (r - 1), hy + ax * (r - 1), gx, gy, arm, 2);
     pxLine(c, hx + ay * (r - 1), hy - ax * (r - 1), gx + ax * 4, gy + ay * 4, arm, 2);
-    const g = HW.gunSpr[w.ch];
+    const g = HW.gunSprOf(w);   // their own gun, or the special one they picked up
     c.save(); c.translate(Math.round(gx), Math.round(gy)); c.rotate(w.aim); if (ax < 0) c.scale(1, -1); c.drawImage(g.c, -g.px, -g.py); c.restore();
     c.fillStyle = HW.PAL.T; c.fillRect(Math.round(gx) - 1, Math.round(gy) - 1, 2, 2);
     // eyes
@@ -122,6 +122,40 @@
     }
     if (w.slow > 0) ring(c, hx, hy, r + 4, '#5cc04a', 6, -t * 3, 2);
     if (w.boosting && Math.random() < 0.5) { const tl = p[n - 1]; fx.burst(tl.x, tl.y, ['#fff', '#ffd23f'], 1, 30, 0.3, 1); }
+  }
+
+  // power-up effects and speech bubbles, drawn over a worm
+  const RAINBOW = ['#ff5a4d', '#ffd23f', '#b5e61d', '#4cc9f0', '#9b5de5', '#ff7eb6'];
+  function drawWormFx(c, w, ox, oy, t) {
+    const p = w.pts, n = p.length, hx = Math.round(w.x - ox), hy = Math.round(w.y - oy), r = w.r;
+    if (w.rage > 0) {
+      // rampage: rainbow sparks all down the body, a spinning halo on the head. Blinks before it ends.
+      if (w.rage > 1.5 || ((t * 10) | 0) % 2) {
+        const k = (t * 14) | 0;
+        for (let i = 0; i < n; i += 3) { c.fillStyle = RAINBOW[(i + k) % 6]; c.fillRect(Math.round(p[i].x - ox) - 1 + ((i * 7 + k) % 5) - 2, Math.round(p[i].y - oy) - 1 + ((i * 3 + k) % 5) - 2, 2, 2); }
+        ring(c, hx, hy, r + 5, RAINBOW[k % 6], 10, t * 7, 2); ring(c, hx, hy, r + 8, RAINBOW[(k + 3) % 6], 6, -t * 5, 2);
+      }
+      if (Math.random() < 0.5) fx.burst(w.x, w.y, RAINBOW, 1, 40, 0.35, 2);
+    }
+    if (w.guard > 0 && (w.guard > 2 || ((t * 8) | 0) % 2)) {
+      // shot shield: a bubble on the head and a glint along the body
+      ring(c, hx, hy, r + 6, '#4cc9f0', 16, t * 2, 2); ring(c, hx, hy, r + 6, '#ffffff', 4, -t * 3, 2);
+      c.fillStyle = '#9be7ff'; for (let i = 5; i < n; i += 5) { const a = t * 3 + i; c.fillRect(Math.round(p[i].x - ox + Math.cos(a) * (r + 2)), Math.round(p[i].y - oy + Math.sin(a) * (r + 2)), 2, 2); }
+    }
+    if (w.chill > 0) {
+      ring(c, hx, hy, r + 4, '#c9f2ff', 8, t * 1.5, 2);
+      c.fillStyle = '#c9f2ff'; for (let i = 2; i < n; i += 4) c.fillRect(Math.round(p[i].x - ox) - 1, Math.round(p[i].y - oy) - 1, 2, 2);
+    }
+    if (w.sauce > 0 && w.boosting) { const tl = p[n - 1]; fx.burst(tl.x, tl.y, ['#fff1c9', '#ffd23f', '#f08a1c', '#e03c32'], 2, 50, 0.45, 3); }
+    if (w.big > 0 && w.big < 2 && ((t * 8) | 0) % 2) ring(c, hx, hy, r + 3, '#ff5a4d', 10, t, 2);   // about to shrink
+    const T = w._say;
+    if (T && T.t > t) {
+      // speech bubble
+      const tw = HW.textW(T.s, 1), bx = Math.round(hx - tw / 2) - 3, by = hy - r - 26;
+      c.fillStyle = '#1a1423'; c.fillRect(bx - 1, by - 1, tw + 8, 13); c.fillRect(hx - 2, by + 11, 5, 3);
+      c.fillStyle = '#ffffff'; c.fillRect(bx, by, tw + 6, 11); c.fillRect(hx - 1, by + 11, 3, 2);
+      text(c, T.s, bx + 3, by + 2, '#1a1423', { shadow: false });
+    }
   }
 
   const FARTC = ['#7ed321', '#a8e04a', '#4f9a1e', '#c6f06a'];
@@ -245,6 +279,26 @@
     }
     return o.spr = c;
   }
+  // power-ups, special guns and the golden burger: big, glowing and labelled so nobody misses them
+  let powerSpr2 = null, goldSpr2 = null, sgunSpr2 = null;
+  function drawPickup(c, it, x, y, t) {
+    if (!powerSpr2) { const tw = s => { const d = HW.mk(s.width * 2, s.height * 2), q = d.getContext('2d'); q.imageSmoothingEnabled = false; q.drawImage(s, 0, 0, d.width, d.height); return d; }; powerSpr2 = HW.powerSpr.map(tw); goldSpr2 = tw(HW.goldSpr); sgunSpr2 = HW.sgunSpr.map(g => tw(g.c)); }
+    const bob = Math.round(Math.sin(t * 3 + it.id) * 2), k = (t * 6 + it.id) | 0;
+    if (it.k === 'g') {
+      const G = HW.SGUNS[it.type], g = sgunSpr2[it.type];
+      c.globalAlpha = 0.6; c.drawImage(disc('#1a1423', 23), x - 23, y - 23); c.globalAlpha = 1;
+      ring(c, x, y, 23, '#4cc9f0', 16, t * 2, 2); ring(c, x, y, 26 + Math.sin(t * 4 + it.id) * 2, '#ffffff', 5, -t * 2.5, 2);
+      c.drawImage(g, x - (g.width >> 1), y - (g.height >> 1) + bob);
+      text(c, G.name, x, y - 38, '#9be7ff', { align: 0.5 });
+      return;
+    }
+    const gold = it.k === 'x', s = gold ? goldSpr2 : powerSpr2[it.type], col = gold ? '#ffd23f' : HW.POWERS[it.type].col;
+    ring(c, x, y, 20, col, 12, t * 2.5, 2); ring(c, x, y, 24 + Math.sin(t * 5 + it.id) * 2, k % 2 ? '#ffffff' : col, 6, -t * 3, 2);
+    c.drawImage(s, x - (s.width >> 1), y - (s.height >> 1) + bob);
+    // the shine: a few white glints hopping around the sprite
+    c.fillStyle = '#ffffff'; for (let i = 0; i < 3; i++) { const a = ((k + i * 5) * 2.4) % 6.283, d = 6 + ((k * 3 + i * 4) % 8); c.fillRect(x + Math.round(Math.cos(a) * d), y + bob + Math.round(Math.sin(a) * d), 2, 2); }
+    text(c, gold ? 'GOLDEN BURGER' : HW.POWERS[it.type].name, x, y - 34, col, { align: 0.5 });
+  }
   const mmCache = {};
   // minimap background: zones tinted, obstacles as pale blocks
   function mmBg(ms) {
@@ -262,8 +316,21 @@
       case 1: c.fillStyle = '#1a1423'; c.fillRect(x - 2, y - 2, 5, 5); c.fillStyle = '#9be7ff'; c.fillRect(x - 1, y - 1, 3, 3); c.fillStyle = '#fff'; c.fillRect(x - 1, y - 1, 1, 1); break;
       case 2: c.fillStyle = '#1a1423'; c.fillRect(x - 2, y - 3, 4, 6); c.fillRect(x - 3, y - 2, 6, 4); c.fillStyle = GUMC[b.c % 5]; c.fillRect(x - 2, y - 2, 4, 4); c.fillStyle = '#fff'; c.fillRect(x - 1, y - 1, 1, 1); break;
       case 3: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.skewerSpr, -9, -1); c.restore(); break;
-      default: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.rocketSpr, -6, -2); c.restore();
-        if (Math.random() < 0.7) fx.burst(b.x - b.vx * 0.02, b.y - b.vy * 0.02, ['#fff', '#bbb', '#f08a1c'], 1, 20, 0.45, 2);
+      case 4: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.rocketSpr, -6, -2); c.restore();
+        if (Math.random() < 0.7) fx.burst(b.x - b.vx * 0.02, b.y - b.vy * 0.02, ['#fff', '#bbb', '#f08a1c'], 1, 20, 0.45, 2); break;
+      // ---- special guns ----
+      case 5: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.raySpr, -6, -1); c.restore(); if (Math.random() < 0.5) fx.burst(b.x, b.y, ['#b5e61d', '#fff'], 1, 12, 0.25, 1); break;
+      case 6: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.bigRocketSpr, -6, -2); c.restore();
+        fx.burst(b.x - b.vx * 0.02, b.y - b.vy * 0.02, ['#fff', '#bbb', '#f08a1c', '#e03c32'], 1, 26, 0.5, 2); break;
+      case 7: {
+        // a puff of flame: starts small and white-hot, swells and reddens
+        const a = b.age || 0, sz = Math.min(11, 3 + (a * 16 | 0)), h = sz >> 1;
+        c.fillStyle = a < 0.12 ? '#fff1c9' : a < 0.28 ? '#ffd23f' : a < 0.45 ? '#f08a1c' : '#e03c32'; c.fillRect(x - h, y - h, sz, sz);
+        if (sz > 5) { c.fillStyle = a < 0.28 ? '#ffffff' : a < 0.45 ? '#ffd23f' : '#f08a1c'; c.fillRect(x - h + 2, y - h + 2, sz - 4, sz - 4); }
+        break;
+      }
+      case 8: c.fillStyle = '#1a1423'; c.fillRect(x - 2, y - 3, 4, 6); c.fillRect(x - 3, y - 2, 6, 4); c.fillStyle = b.c & 1 ? '#fff1c9' : '#ffffff'; c.fillRect(x - 2, y - 2, 4, 4); c.fillStyle = '#ffd23f'; c.fillRect(x, y, 2, 2); break;
+      case 9: c.save(); c.translate(x, y); c.rotate(Math.atan2(b.vy, b.vx)); c.drawImage(HW.iceSpr, -5, -1); c.restore(); if (Math.random() < 0.5) fx.burst(b.x, b.y, ['#c9f2ff', '#fff'], 1, 14, 0.3, 1); break;
     }
   }
 
@@ -301,6 +368,7 @@
       let s;
       if (it.k === 'f') s = it.v >= CFG.BIG ? HW.foodSpr2[it.type] : HW.foodSpr[it.type];   // proper food is double size, crumbs are small
       else if (it.k === 'a') { s = HW.ammoSpr; if (((t * 3 + it.id) | 0) % 2) ring(c, Math.round(x), Math.round(y), 10, '#ffd23f', 8, t * 2, 1); }
+      else if (it.k === 'p' || it.k === 'g' || it.k === 'x') { drawPickup(c, it, Math.round(x), Math.round(y), t); continue; }
       else if (it.k === 'v') { s = HW.vegSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18, '#5cc04a', 8, -t * 0.8 + it.id, 2); }
       else { s = HW.shroomSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18 + Math.sin(t * 3 + it.id) * 3, ['#ff7eb6', '#4cc9f0', '#ffd23f'][((t * 4 + it.id) | 0) % 3], 7, t * 1.5 + it.id, 2); }
       const bob = it.k === 'f' ? 0 : Math.round(Math.sin(t * 3 + it.id) * 1.2);
@@ -317,6 +385,7 @@
       if (!w.alive || w.bx1 === undefined) continue;
       if (w.bx1 - ox < -30 || w.bx0 - ox > v.w + 30 || w.by1 - oy < -30 || w.by0 - oy > v.h + 30) continue;
       drawWorm(c, w, ox, oy, t, w === leader && w.mass > 60, w.id === v.meId);
+      if (w.rage > 0 || w.guard > 0 || w.chill > 0 || w.sauce > 0 || w.big > 0 || w._say) drawWormFx(c, w, ox, oy, t);
       // tags: an arrow over your own worm, P-numbers over other humans
       const tx = Math.round(w.x - ox), ty = Math.round(w.y - oy) - w.r - (w === leader && w.mass > 60 ? 20 : 12);
       if (w.id === v.meId) { const b = Math.round(Math.sin(t * 6)); c.fillStyle = '#1a1423'; c.fillRect(tx - 4, ty - 5 + b, 9, 3); c.fillRect(tx - 2, ty - 2 + b, 5, 2); c.fillRect(tx - 1, ty + b, 3, 2); c.fillStyle = '#fff'; c.fillRect(tx - 3, ty - 4 + b, 7, 1); c.fillRect(tx - 2, ty - 3 + b, 5, 1); c.fillRect(tx - 1, ty - 2 + b, 3, 1); c.fillRect(tx, ty - 1 + b, 1, 1); }
@@ -362,6 +431,12 @@
     const ms = small ? 50 : 60, mx = v.x + 5 + (v.x <= 0 ? sa.l : 0), my = v.y + 5;
     panel(c, mx - 1, my - 1, ms + 2, ms + 2, 0.9); c.fillStyle = 'rgba(255,255,255,0.06)'; c.fillRect(mx, my, ms, ms); c.drawImage(mmBg(ms), mx, my);
     for (const z of G.zones) { c.fillStyle = z.k === 0 ? '#7ed321' : '#c9c13a'; c.fillRect(mx + (z.x / CFG.W * ms | 0) - 1, my + (z.y / CFG.H * ms | 0) - 1, 3, 3); }
+    // pickups blink on the minimap so everybody knows where the fight will be
+    if (((t * 3) | 0) % 2) for (const it of G.items.values()) {
+      if (it.k !== 'p' && it.k !== 'g' && it.k !== 'x') continue;
+      c.fillStyle = it.k === 'g' ? '#4cc9f0' : it.k === 'x' ? '#ffd23f' : HW.POWERS[it.type].col; c.fillRect(mx + (it.x / CFG.W * ms | 0) - 1, my + (it.y / CFG.H * ms | 0) - 1, 3, 3);
+      c.fillStyle = '#ffffff'; c.fillRect(mx + (it.x / CFG.W * ms | 0), my + (it.y / CFG.H * ms | 0), 1, 1);
+    }
     let leader = null;
     for (const w of G.worms) {
       if (!w.alive) continue; if (!leader || w.mass > leader.mass) leader = w; if (w === me) continue;
@@ -398,16 +473,28 @@
       }
       text(c, 'KILLS ' + mine.kills, mx, my + ms + 14, '#fff');
     }
+    // banner: streak callouts, power-up names, the last-minute frenzy
+    if (v.banner && v.banner.t > 0) { const B = v.banner, big = !small && B.s.length < 22; text(c, B.s, tcx + (B.t > 1.6 ? Math.sin(t * 40) * 2 : 0), v.y + Math.round(v.h * 0.27), ((t * 8) | 0) % 2 ? B.c : '#ffffff', { align: 0.5, scale: big ? 2 : 1 }); }
     // kill feed
     HW.fx.feed.slice(-3).forEach((f, i) => text(c, f.s, tcx, (small ? v.y + ms + 26 : topY + (o.roomCode ? 10 : 0)) + i * 9, f.c, { align: 0.5 }));
 
     if (me && me.alive) {
-      const C = CHARS[me.ch], g = C.gun;
+      const C = CHARS[me.ch], g = C.gun, SG = me.sg ? HW.SGUNS[me.sg - 1] : null;
       // bottom centre: mass, ammo, ability meter
       const bx = v.x + v.w / 2, by = v.y + v.h - 12 - sa.b;
       text(c, 'MASS ' + Math.round(me.mass), bx - 8, by, '#fff', { align: 1 });
-      text(c, 'AMMO ' + me.ammo, bx + 8, by, me.ammo === 0 ? (((t * 4) | 0) % 2 ? '#e03c32' : '#fff') : me.ammo <= g.max * 0.2 ? '#ffb0a8' : '#ffd23f');
-      if (me.ammo === 0) text(c, 'NO AMMO! GRAB A CRATE', bx, by - 34, '#ff8a80', { align: 0.5 });
+      if (SG) text(c, SG.name.split(' ').slice(-2).join(' ') + ' ' + Math.ceil(me.sgT), bx + 8, by, me.sgT < 3 && ((t * 6) | 0) % 2 ? '#fff' : '#4cc9f0');
+      else text(c, 'AMMO ' + me.ammo, bx + 8, by, me.ammo === 0 ? (((t * 4) | 0) % 2 ? '#e03c32' : '#fff') : me.ammo <= g.max * 0.2 ? '#ffb0a8' : '#ffd23f');
+      // running power-ups: a bar each, stacked above the ability meter
+      let py = by - 34;
+      for (let i = 0; i < HW.POWERS.length; i++) {
+        const P = HW.POWERS[i], left = [me.rage, me.big, me.guard, me.sauce][i]; if (!(left > 0)) continue;
+        const bw = 60, x0 = Math.round(bx - bw / 2); panel(c, x0 - 1, py - 1, bw + 2, 6, 0.8);
+        c.fillStyle = left < 2 && ((t * 8) | 0) % 2 ? '#fff' : P.col; c.fillRect(x0, py, Math.round(bw * Math.min(1, left / P.t)), 4);
+        text(c, P.name, x0 - 4, py - 2, P.col, { align: 1 }); py -= 10;
+      }
+      if (me.ammo === 0 && !SG) text(c, 'NO AMMO! GRAB A CRATE', bx, py - 2, '#ff8a80', { align: 0.5 });
+      if (me.chill > 0) text(c, 'FROZEN!', bx, v.y + v.h / 2 - 58, '#c9f2ff', { align: 0.5 });
       if (C.ability) {
         const bw = 80, x0 = Math.round(bx - bw / 2), y0 = by - 12, f = 1 - Math.max(0, me.abil) / CFG.ABIL_CD;
         panel(c, x0 - 1, y0 - 1, bw + 2, 8, 0.8);
@@ -423,7 +510,7 @@
       const p = o.player, cxm = v.x + v.w / 2, cy = v.y + v.h / 2;
       panel(c, v.x, cy - 44, v.w, 88, 0.72);
       if (p.everSpawned) {
-        const cause = { fart: 'GASSED BY ', puke: 'DROWNED IN PUKE BY ', shot: 'SHOT BY ', crash: 'CRASHED INTO ', bonk: 'HEAD-BUTTED BY ', left: '' }[p.lastCause] || '';
+        const cause = { fart: 'GASSED BY ', puke: 'DROWNED IN PUKE BY ', shot: 'SHOT BY ', crash: 'CRASHED INTO ', bonk: 'HEAD-BUTTED BY ', rampage: 'RUN OVER BY ', left: '' }[p.lastCause] || '';
         text(c, 'YOU DIED', cxm, cy - 36, '#ff5a4d', { align: 0.5, scale: 2 });
         if (p.lastKiller) text(c, cause + p.lastKiller, cxm, cy - 14, '#fff', { align: 0.5 });
         text(c, 'SCORE ' + (p.lastScore || 0) + '   BEST ' + Math.round(p.best || 0), cxm, cy - 2, '#ffd23f', { align: 0.5 });
