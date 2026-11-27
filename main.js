@@ -37,7 +37,7 @@
   const ui = $('ui');
   const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
-  function U() { const d = window.devicePixelRatio || 1; return Math.max(1, Math.floor(Math.min(window.innerWidth * d / 450, window.innerHeight * d / 222) * 2) / 2) / d; }
+  function U() { const d = window.devicePixelRatio || 1; return Math.max(1, Math.floor(Math.min(window.innerWidth * d / 430, window.innerHeight * d / 222) * 2) / 2) / d; }   // 430: the widest menu line (80 letters of help) still fits, and buttons on small phones are a third bigger than with 450
   function el(tag, cls, kids) { const e = document.createElement(tag); if (cls) e.className = cls; (kids || []).forEach(k => k && e.appendChild(k)); return e; }
   function px(str, color, scale) {
     str = String(str); const w = Math.max(1, HW.textW(str, 1) + 1), c = HW.mk(w, 8); HW.text(c.getContext('2d'), str, 0, 0, color || '#fff');
@@ -75,13 +75,14 @@
       ['EAT JUNK FOOD TO GROW. RUN YOUR HEAD INTO ANOTHER WORM AND YOU DIE.', '#fff'],
       ['SHOOT WORMS TO KNOCK FOOD OUT OF THEM. AMMO COMES FROM CRATES.', '#fff'],
       ['COUNTERS, TABLES AND CRATES BLOCK SHOTS AND WORMS. HIDE BEHIND THEM.', '#fff'],
-      ['VEGGIES SHRINK AND SLOW YOU, MUSHROOMS GO WOBBLY. BOTH CHARGE YOUR ABILITY FASTER.', '#9cf08a'],
-      ['GLOWING PICKUPS: PIZZA = RAMPAGE, FRIES = SUPERSIZE, SHIELD, HOT SAUCE, SPECIAL GUNS.', '#ffd23f'],
+      ['VEGGIES SHRINK AND SLOW YOU, MUSHROOMS WOBBLE. BOTH CHARGE YOUR ABILITY.', '#9cf08a'],
+      ['GLOWING PICKUPS: PIZZA = RAMPAGE, FRIES = SUPERSIZE, SHIELD, SAUCE, BIG GUNS.', '#ffd23f'],
+      ['HITTING A WORM IS A BUMP FIRST: TURN AWAY FAST AND YOU LIVE.', '#ffb0a8'],
       ['FART: TOXIC CLOUD, KILLS ANY OTHER WORM.  PUKE: STICKY PUDDLE, STUCK 10 SEC.', '#d7e84a'],
       ['PHONE: LEFT THUMB MOVES. RIGHT THUMB AIMS AND SHOOTS. BOOST + ABILITY BUTTONS.', '#9be7ff'],
       ['KEYBOARD: WASD OR ARROWS MOVE. MOUSE AIMS, CLICK SHOOTS (OR SPACE).', '#9be7ff'],
       ['          SHIFT BOOSTS. E USES YOUR ABILITY. T TAUNTS. ESC PAUSES.', '#9be7ff'],
-      ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY. B TAUNT.', '#9be7ff'],
+      ['CONTROLLER: LEFT STICK MOVE, RIGHT STICK AIM + SHOOT. A BOOST, X ABILITY, B TAUNT.', '#9be7ff'],
       ['2 PLAYERS: EACH HALF OF THE SCREEN HAS ITS OWN TOUCH CONTROLS.', '#ffb0a8'],
       ['           OR P1 WASD+MOUSE, P2 CONTROLLER OR ARROWS, ENTER, SHIFT, PERIOD.', '#ffb0a8'],
       ['ONLINE: ONE DEVICE HOSTS AND SHARES THE 4 LETTER ROOM CODE. UP TO 4 PLAYERS.', '#ffb0a8']
@@ -247,6 +248,8 @@
   // ---------- events -> particles + sound ----------
   function near(x, y) { let d = 1e9; for (const l of App.locals) { const q = Math.abs(l.view.cam.x - x) + Math.abs(l.view.cam.y - y); if (q < d) d = q; } return d; }
   const mine = id => App.locals.some(l => l.me && l.me.id === id);
+  // a worm's name in the kill feed: YOU (or P1 / P2 in split screen) for the players on this device
+  const who = (pid, name) => { const l = pid >= 0 ? App.locals.find(q => q.player && q.player.pid === pid) : null; return l ? (App.locals.length > 1 ? 'P' + (l.slot + 1) : 'YOU') : pid >= 0 ? 'P' + (pid + 1) + ' ' + name : name; };
   const wormOf = id => { const G = App.G; if (!G) return null; if (G.wmap) return G.wmap.get(id) || null; for (const w of G.worms) if (w.id === id) return w; return null; };
   // big text across one player's view (their pid)
   function banner(pid, s, c, t) { for (const l of App.locals) if (l.player && l.player.pid === pid) l.view.banner = { s, c, t: t || 2 }; }
@@ -285,7 +288,7 @@
         if (meK) { Snd.tone(523, 0.1, 'square', 0.1); Snd.tone(784, 0.18, 'square', 0.1, 0, 0.1); }
         if (e[5] === 'left') break;
         const kn = e[7] >= 0 ? CHARS[e[7]].name : '', vn = vc.name, verb = { fart: ' GASSED ', puke: ' DROWNED ', shot: ' SHOT ', crash: ' ATE ', bonk: ' FLATTENED ', rampage: ' RAN OVER ' }[e[5]] || ' GOT ';
-        if (kn && (meV || meK || e[8] >= 0 || e[9] >= 0 || d < 380)) fx.feed.push({ s: e[5] === 'crash' ? vn + ' CRASHED INTO ' + kn : kn + verb + vn, c: meK ? '#b5e61d' : meV ? '#ff8a80' : '#bbc', t: 4 });
+        if (kn && (meV || meK || e[8] >= 0 || e[9] >= 0 || d < 380)) fx.feed.push({ s: e[5] === 'crash' ? who(e[8], vn) + ' CRASHED INTO ' + who(e[9], kn) : who(e[9], kn) + verb + who(e[8], vn), c: meK ? '#b5e61d' : meV ? '#ff8a80' : '#bbc', t: 4 });
         break;
       }
       case 'fart': fx.burst(x, y, ['#7ed321', '#a8e04a', '#c6f06a'], 26, 120, 0.8, 3); if (vol && gate('fart', 100)) { Snd.tone(95, 0.55, 'sawtooth', 0.22 * vol, 48); Snd.noise(0.5, 0.18 * vol, 300, 120); } break;
@@ -328,7 +331,7 @@
       // ---- streaks, bounty, frenzy, taunts ----
       case 'streak': {
         const q = (HW.STREAKS || []).find(s => s[0] === e[4]); if (!q || demo) break;
-        fx.text(x, y - 24, q[1] + '!', '#ffd23f');
+        fx.text(x, y - 20 - e[4] * 5, q[1] + '!', '#ffd23f');   // (two callouts in one frame get their own rows)
         if (e[6] >= 0) banner(e[6], q[1] + '!  +' + e[5], '#ffd23f', 2.4); else if (d < 380) fx.feed.push({ s: CHARS[e[7]].name + ': ' + q[1], c: '#ffd23f', t: 4 });
         if (mine(e[3])) for (let i = 0; i < Math.min(5, e[4]); i++) Snd.tone(523 * Math.pow(1.19, i), 0.1, 'square', 0.1, 0, i * 0.07);
         break;

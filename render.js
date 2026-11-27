@@ -289,8 +289,17 @@
     }
     return o.spr = c;
   }
+  // A short string as one pre-drawn image. text() costs two drawImage calls per letter; floating texts,
+  // pickup names and the kill feed repeat the same string every frame, so they are baked once.
+  const labels = new Map();
+  function label(c, s, x, y, col, align) {
+    const k = col + '|' + s; let L = labels.get(k);
+    if (!L) { if (labels.size > 300) labels.clear(); L = HW.mk(HW.textW(s, 1) + 2, 9); text(L.getContext('2d'), s, 0, 0, col); labels.set(k, L); }
+    c.drawImage(L, Math.round(x - (L.width - 2) * (align || 0)), Math.round(y));
+  }
   // power-ups, special guns and the golden burger: big, glowing and labelled so nobody misses them
-  let powerSpr2 = null, goldSpr2 = null, sgunSpr2 = null;
+  let powerSpr2 = null, goldSpr2 = null, sgunSpr2 = null, ammoSpr2 = null;
+  const twice = s => { const d = HW.mk(s.width * 2, s.height * 2), q = d.getContext('2d'); q.imageSmoothingEnabled = false; q.drawImage(s, 0, 0, d.width, d.height); return d; };
   function drawPickup(c, it, x, y, t) {
     if (!powerSpr2) { const tw = s => { const d = HW.mk(s.width * 2, s.height * 2), q = d.getContext('2d'); q.imageSmoothingEnabled = false; q.drawImage(s, 0, 0, d.width, d.height); return d; }; powerSpr2 = HW.powerSpr.map(tw); goldSpr2 = tw(HW.goldSpr); sgunSpr2 = HW.sgunSpr.map(g => tw(g.c)); }
     const bob = Math.round(Math.sin(t * 3 + it.id) * 2), k = (t * 6 + it.id) | 0;
@@ -299,7 +308,7 @@
       c.globalAlpha = 0.6; c.drawImage(disc('#1a1423', 23), x - 23, y - 23); c.globalAlpha = 1;
       ring(c, x, y, 23, '#4cc9f0', 16, t * 2, 2); ring(c, x, y, 26 + Math.sin(t * 4 + it.id) * 2, '#ffffff', 5, -t * 2.5, 2);
       c.drawImage(g, x - (g.width >> 1), y - (g.height >> 1) + bob);
-      text(c, G.name, x, y - 38, '#9be7ff', { align: 0.5 });
+      label(c, G.name, x, Math.max(y - 38, 24), '#9be7ff', 0.5);   // never up under the clock
       return;
     }
     const gold = it.k === 'x', s = gold ? goldSpr2 : powerSpr2[it.type], col = gold ? '#ffd23f' : HW.POWERS[it.type].col;
@@ -307,7 +316,7 @@
     c.drawImage(s, x - (s.width >> 1), y - (s.height >> 1) + bob);
     // the shine: a few white glints hopping around the sprite
     c.fillStyle = '#ffffff'; for (let i = 0; i < 3; i++) { const a = ((k + i * 5) * 2.4) % 6.283, d = 6 + ((k * 3 + i * 4) % 8); c.fillRect(x + Math.round(Math.cos(a) * d), y + bob + Math.round(Math.sin(a) * d), 2, 2); }
-    text(c, gold ? 'GOLDEN BURGER' : HW.POWERS[it.type].name, x, y - 34, col, { align: 0.5 });
+    label(c, gold ? 'GOLDEN BURGER' : HW.POWERS[it.type].name, x, Math.max(y - 34, 24), col, 0.5);
   }
   const mmCache = {};
   // minimap background: zones tinted, obstacles as pale blocks
@@ -377,7 +386,7 @@
       const x = it.x - ox, y = it.y - oy; if (x < -26 || y < -26 || x > v.w + 26 || y > v.h + 26) continue;
       let s;
       if (it.k === 'f') s = it.v >= CFG.BIG ? HW.foodSpr2[it.type] : HW.foodSpr[it.type];   // proper food is double size, crumbs are small
-      else if (it.k === 'a') { s = HW.ammoSpr; if (((t * 3 + it.id) | 0) % 2) ring(c, Math.round(x), Math.round(y), 10, '#ffd23f', 8, t * 2, 1); }
+      else if (it.k === 'a') { s = ammoSpr2 || (ammoSpr2 = twice(HW.ammoSpr)); ring(c, Math.round(x), Math.round(y), 17, ((t * 3 + it.id) | 0) % 2 ? '#ffd23f' : '#b5e61d', 10, t * 2, 2); }   // crates are double size too, or they vanish next to the food
       else if (it.k === 'p' || it.k === 'g' || it.k === 'x') { drawPickup(c, it, Math.round(x), Math.round(y), t); continue; }
       else if (it.k === 'v') { s = HW.vegSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18, '#5cc04a', 8, -t * 0.8 + it.id, 2); }
       else { s = HW.shroomSpr2[it.type]; ring(c, Math.round(x), Math.round(y), 18 + Math.sin(t * 3 + it.id) * 3, ['#ff7eb6', '#4cc9f0', '#ffd23f'][((t * 4 + it.id) | 0) % 3], 7, t * 1.5 + it.id, 2); }
@@ -398,13 +407,14 @@
       if (w.rage > 0 || w.guard > 0 || w.chill > 0 || w.sauce > 0 || w.big > 0 || w._say) drawWormFx(c, w, ox, oy, t);
       // tags: an arrow over your own worm, P-numbers over other humans
       const tx = Math.round(w.x - ox), ty = Math.round(w.y - oy) - w.r - (w === leader && w.mass > 60 ? 20 : 12);
-      if (w.id === v.meId) { const b = Math.round(Math.sin(t * 6)); c.fillStyle = '#1a1423'; c.fillRect(tx - 4, ty - 5 + b, 9, 3); c.fillRect(tx - 2, ty - 2 + b, 5, 2); c.fillRect(tx - 1, ty + b, 3, 2); c.fillStyle = '#fff'; c.fillRect(tx - 3, ty - 4 + b, 7, 1); c.fillRect(tx - 2, ty - 3 + b, 5, 1); c.fillRect(tx - 1, ty - 2 + b, 3, 1); c.fillRect(tx, ty - 1 + b, 1, 1); }
-      else if (w.pid >= 0) text(c, 'P' + (w.pid + 1), tx, ty - 6, '#9be7ff', { align: 0.5 });
+      // the arrow steps aside for your own speech bubble
+      if (w.id === v.meId && !(w._say && w._say.t > t)) { const b = Math.round(Math.sin(t * 6)); c.fillStyle = '#1a1423'; c.fillRect(tx - 4, ty - 5 + b, 9, 3); c.fillRect(tx - 2, ty - 2 + b, 5, 2); c.fillRect(tx - 1, ty + b, 3, 2); c.fillStyle = '#fff'; c.fillRect(tx - 3, ty - 4 + b, 7, 1); c.fillRect(tx - 2, ty - 3 + b, 5, 1); c.fillRect(tx - 1, ty - 2 + b, 3, 1); c.fillRect(tx, ty - 1 + b, 1, 1); }
+      else if (w.pid >= 0 && w.id !== v.meId) text(c, 'P' + (w.pid + 1), tx, ty - 6, '#9be7ff', { align: 0.5 });
     }
     for (const b of G.bullets) { const x = b.x - ox, y = b.y - oy; if (x > -20 && y > -20 && x < v.w + 20 && y < v.h + 20) drawBullet(c, b, ox, oy); }
     for (const z of G.zones) if (z.k === 0 && z.x - ox > -z.r - 4 && z.x - ox < v.w + z.r + 4 && z.y - oy > -z.r - 4 && z.y - oy < v.h + z.r + 4) drawZone(c, z, ox, oy, t, true);
     for (const p of fx.parts) { const x = p.x - ox, y = p.y - oy; if (x < 0 || y < 0 || x > v.w || y > v.h) continue; c.fillStyle = p.c; c.fillRect(x | 0, y | 0, p.s, p.s); }
-    for (const p of fx.texts) text(c, p.s, p.x - ox, p.y - oy, p.c, { align: 0.5 });
+    for (const p of fx.texts) { const x = p.x - ox, y = p.y - oy; if (x > -80 && y > -10 && x < v.w + 80 && y < v.h + 4) label(c, p.s, x, y, p.c, 0.5); }
 
     // ---- composite to the main canvas with screen effects ----
     const m = cx;
@@ -413,9 +423,9 @@
       const k = Math.min(1, v.trip / 1.5), amp = 7 * k;
       m.globalAlpha = 0.3 * k; m.fillStyle = '#120e1c'; m.fillRect(v.x, v.y, v.w, v.h); // stops the additive passes burning in at the edges
       m.globalAlpha = 1 - 0.45 * k; // leaves trails of the previous frame = fuzzy
-      for (let y = 0; y < v.h; y += 3) {
+      for (let y = 0; y < v.h; y += 5) {
         const o = Math.sin(y * 0.045 + t * 3.1) * amp + Math.sin(y * 0.11 - t * 4.3) * amp * 0.4;
-        m.drawImage(vc, 0, y, v.w, 3, v.x + Math.round(o), v.y + y + Math.round(Math.cos(y * 0.03 + t * 2) * amp * 0.35), v.w, 3);
+        m.drawImage(vc, 0, y, v.w, 5, v.x + Math.round(o), v.y + y + Math.round(Math.cos(y * 0.03 + t * 2) * amp * 0.35), v.w, 5);
       }
       m.globalAlpha = 0.16 * k; m.globalCompositeOperation = 'lighter';
       m.drawImage(vc, v.x + Math.round(Math.sin(t * 2.3) * 9), v.y + Math.round(Math.cos(t * 1.7) * 6));
@@ -461,7 +471,7 @@
     const comps = G.comps || [], ranked = comps.slice().sort((a, b) => b.score - a.score || b.kills - a.kills), mine = o.player ? comps.find(q => q.pid === o.player.pid) : null;
     const top = ranked.slice(0, small ? 3 : 4);
     if (mine && top.indexOf(mine) < 0 && top.length) top[top.length - 1] = mine; else if (!small && top.length > 3 && top.indexOf(mine) < 3) top.length = 3;
-    const lw = 92, lx = v.x + v.w - lw - 4 - (v.x + v.w >= R.W ? sa.r : 0); panel(c, lx, v.y + 4, lw, top.length * 9 + 3, 0.55);
+    const lw = 98, lx = v.x + v.w - lw - 4 - (v.x + v.w >= R.W ? sa.r : 0); panel(c, lx, v.y + 4, lw, top.length * 9 + 3, 0.55);
     top.forEach((q, i) => {
       const col = q === mine ? '#ffd23f' : q.pid >= 0 ? '#9be7ff' : '#ddd', y = v.y + 6 + i * 9;
       text(c, ranked.indexOf(q) + 1, lx + 3, y, col, { shadow: false });
@@ -484,22 +494,30 @@
       text(c, 'KILLS ' + mine.kills, mx, my + ms + 14, '#fff');
     }
     // bumping into a worm: red edges and a shout, so the moment of impact cannot be missed
-    if (v.warn > 0) {
+    const bumping = v.warn > 0 && !(me && me.stuck > 0);   // (a worm glued in puke cannot turn: no point shouting at it)
+    if (bumping) {
       c.fillStyle = ((t * 14) | 0) % 2 ? 'rgba(255,60,50,0.55)' : 'rgba(255,210,63,0.45)';
       c.fillRect(v.x, v.y, v.w, 5); c.fillRect(v.x, v.y + v.h - 5, v.w, 5); c.fillRect(v.x, v.y, 5, v.h); c.fillRect(v.x + v.w - 5, v.y, 5, v.h);
-      text(c, 'TURN!', tcx, v.y + v.h / 2 - 46, ((t * 14) | 0) % 2 ? '#ff5a4d' : '#ffffff', { align: 0.5, scale: 2 });
     }
-    // banner: streak callouts, power-up names, the last-minute frenzy
-    if (v.banner && v.banner.t > 0) { const B = v.banner, big = !small && B.s.length < 22; text(c, B.s, tcx + (B.t > 1.6 ? Math.sin(t * 40) * 2 : 0), v.y + Math.round(v.h * 0.27), ((t * 8) | 0) % 2 ? B.c : '#ffffff', { align: 0.5, scale: big ? 2 : 1 }); }
-    // kill feed
-    HW.fx.feed.slice(-3).forEach((f, i) => text(c, f.s, tcx, (small ? v.y + ms + 26 : topY + (o.roomCode ? 10 : 0)) + i * 9, f.c, { align: 0.5 }));
+    // Top middle, from the top down: clock, room code, kill feed, then the banner (streak callouts, power-up
+    // names, the frenzy), then veggie / mushroom remarks. Each has its own row so nothing lands on anything else.
+    const feed = HW.fx.feed.slice(small ? -2 : -3), fy = small || o.slotLabel ? v.y + ms + 26 : topY + (o.roomCode ? 10 : 0);
+    let ty = fy;
+    feed.forEach(f => { const w = HW.textW(f.s, 1); panel(c, Math.round(tcx - w / 2) - 3, ty - 1, w + 6, 9, 0.45); label(c, f.s, tcx, ty, f.c, 0.5); ty += 9; });
+    ty += 3;
+    if (v.banner && v.banner.t > 0) {
+      const B = v.banner, sc = !small && B.s.length < 22 ? 2 : 1, w = HW.textW(B.s, sc);
+      panel(c, Math.round(tcx - w / 2) - 4, ty - 2, w + 8, 7 * sc + 5, 0.5);
+      text(c, B.s, tcx + (B.t > 1.6 ? Math.sin(t * 40) * 2 : 0), ty, ((t * 8) | 0) % 2 ? B.c : '#ffffff', { align: 0.5, scale: sc }); ty += 7 * sc + 6;
+    }
 
     if (me && me.alive) {
       const C = CHARS[me.ch], g = C.gun, SG = me.sg ? HW.SGUNS[me.sg - 1] : null;
       // bottom centre: mass, ammo, ability meter
       const bx = v.x + v.w / 2, by = v.y + v.h - 12 - sa.b;
+      panel(c, Math.round(bx) - 62, by - 2, 136, 11, 0.4);   // the read-outs stay legible over tables and food piles
       text(c, 'MASS ' + Math.round(me.mass), bx - 8, by, '#fff', { align: 1 });
-      if (SG) text(c, SG.name.split(' ').slice(-2).join(' ') + ' ' + Math.ceil(me.sgT), bx + 8, by, me.sgT < 3 && ((t * 6) | 0) % 2 ? '#fff' : '#4cc9f0');
+      if (SG) text(c, ({ ray: 'RAY GUN', bazooka: 'ROCKETS', flame: 'FLAMER', mini: 'MINIGUN', freeze: 'FREEZE RAY' }[SG.id] || SG.name) + ' ' + Math.ceil(me.sgT), bx + 8, by, me.sgT < 3 && ((t * 6) | 0) % 2 ? '#fff' : '#4cc9f0');
       else text(c, 'AMMO ' + me.ammo, bx + 8, by, me.ammo === 0 ? (((t * 4) | 0) % 2 ? '#e03c32' : '#fff') : me.ammo <= g.max * 0.2 ? '#ffb0a8' : '#ffd23f');
       // running power-ups: a bar each, stacked above the ability meter
       let py = by - 34;
@@ -510,17 +528,23 @@
         text(c, P.name, x0 - 4, py - 2, P.col, { align: 1 }); py -= 10;
       }
       if (me.ammo === 0 && !SG) text(c, 'NO AMMO! GRAB A CRATE', bx, py - 2, '#ff8a80', { align: 0.5 });
-      if (me.chill > 0) text(c, 'FROZEN!', bx, v.y + v.h / 2 - 58, '#c9f2ff', { align: 0.5 });
+
       if (C.ability) {
         const bw = 80, x0 = Math.round(bx - bw / 2), y0 = by - 12, f = 1 - Math.max(0, me.abil) / CFG.ABIL_CD;
         panel(c, x0 - 1, y0 - 1, bw + 2, 8, 0.8);
         c.fillStyle = f >= 1 ? (((t * 3) | 0) % 2 ? '#b5e61d' : '#7ed321') : '#5a6b8a'; c.fillRect(x0, y0, Math.round(bw * f), 6);
         text(c, f >= 1 ? C.ability + ' READY' + (o.abilKey ? ' ' + o.abilKey : '') : C.ability + ' ' + Math.ceil(me.abil), bx, y0 - 9, f >= 1 ? '#d9ff7a' : '#aab', { align: 0.5 });
       } else text(c, 'NO ABILITY', bx, by - 11, '#778', { align: 0.5 });
-      if (me.shield > 0) text(c, 'SHIELD', bx, v.y + v.h / 2 - 34, '#aef', { align: 0.5 });
-      if (me.stuck > 0) text(c, 'STUCK IN PUKE! ' + Math.ceil(me.stuck), bx, v.y + v.h / 2 - 46, '#d7e84a', { align: 0.5, scale: small ? 1 : 2 });
-      if (v.slow > 0) text(c, 'EW, VEGGIES!', bx, v.y + 28, '#9cf08a', { align: 0.5 });
-      if (v.trip > 0) text(c, 'WHOOOAAA', bx + Math.sin(t * 3) * 8, v.y + 38 + Math.cos(t * 4) * 3, 'hsl(' + ((t * 200) % 360 | 0) + ',90%,70%)', { align: 0.5 });
+      // What is happening to you, stacked upwards from just over your worm (and over your speech bubble when you are talking)
+      let sy = v.y + v.h / 2 - 34 - (me._say && me._say.t > t ? 18 : 0);
+      const say = (s, col, sc) => { sy -= 7 * sc - 7; text(c, s, bx, sy, col, { align: 0.5, scale: sc }); sy -= 11; };
+      if (me.shield > 0) say('SHIELD', '#aef', 1);
+      if (me.stuck > 0) say('STUCK IN PUKE! ' + Math.ceil(me.stuck), '#d7e84a', small ? 1 : 2);
+      else if (bumping) say('TURN!', ((t * 14) | 0) % 2 ? '#ff5a4d' : '#ffffff', 2);
+      if (me.chill > 0) say('FROZEN!', '#c9f2ff', 1);
+      // (the remarks give way when the stack above the worm has climbed that high: the screen tint says it anyway)
+      if (v.slow > 0 && sy > ty + 6) { text(c, 'EW, VEGGIES!', bx, ty, '#9cf08a', { align: 0.5 }); ty += 10; }
+      if (v.trip > 0 && sy > ty + 8) text(c, 'WHOOOAAA', bx + Math.sin(t * 3) * 8, ty + 2 + Math.cos(t * 4) * 3, 'hsl(' + ((t * 200) % 360 | 0) + ',90%,70%)', { align: 0.5 });
     } else if (o.player) {
       // death card
       const p = o.player, cxm = v.x + v.w / 2, cy = v.y + v.h / 2;

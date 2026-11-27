@@ -13,6 +13,7 @@
   };
   // what a snack / meal / feast is worth (FOOD[].v in sprites.js is the class: 1, 2 or 3)
   const FOODV = HW.FOODV = [0, 3, 5, 8];
+  const FOODBY = [[], [], [], []]; HW.FOOD.forEach((f, i) => FOODBY[f.v].push(i));   // sprite indexes per class
 
   // Bot difficulty. skill: range each bot's skill is drawn from (0..1). think / err / rest / lapse multiply
   // thinking time, aim error, the pause between bursts and how often attention wanders. engage: furthest
@@ -119,8 +120,17 @@
   HW.moveHead = function (w, sp, dt) {
     const nx = w.x + Math.cos(w.ang) * sp * dt, ny = w.y + Math.sin(w.ang) * sp * dt;
     w.x = clamp(nx, w.r, CFG.W - w.r); w.y = clamp(ny, w.r, CFG.H - w.r);
-    if (w.x !== nx) { const tg = Math.sin(w.ang) >= 0 ? Math.PI / 2 : -Math.PI / 2; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
-    if (w.y !== ny) { const tg = Math.cos(w.ang) >= 0 ? 0 : Math.PI; w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt); }
+    const hx = w.x !== nx, hy = w.y !== ny;
+    if (hx || hy) {
+      // which walls is the head against? (it may have slid along one of them into a corner)
+      const lef = w.x <= w.r + 1, rig = w.x >= CFG.W - w.r - 1, top = w.y <= w.r + 1, bot = w.y >= CFG.H - w.r - 1;
+      let tg;
+      // in a corner: turn out of it (the two wall nudges would cancel and the worm would sit there for good)
+      if ((lef || rig) && (top || bot)) tg = hx && hy ? Math.atan2(top ? 1 : -1, lef ? 1 : -1) : hx ? (top ? Math.PI / 2 : -Math.PI / 2) : (lef ? 0 : Math.PI);
+      else if (hx) tg = Math.sin(w.ang) >= 0 ? Math.PI / 2 : -Math.PI / 2;
+      else tg = Math.cos(w.ang) >= 0 ? 0 : Math.PI;
+      w.ang += clamp(angDiff(tg, w.ang), -5 * dt, 5 * dt);
+    }
     if (MAP.push(w.x, w.y, w.r, PT)) {
       w.x = clamp(PT.x, w.r, CFG.W - w.r); w.y = clamp(PT.y, w.r, CFG.H - w.r);
       const side = Math.cos(w.ang) * -PT.ny + Math.sin(w.ang) * PT.nx >= 0 ? 1 : -1, tg = Math.atan2(PT.nx * side, -PT.ny * side);
@@ -182,8 +192,7 @@
     if (v === undefined) { type = (Math.random() * HW.FOOD.length) | 0; v = FOODV[HW.FOOD[type].v]; }
     else {
       // choose a sprite that suits the value
-      const want = v >= 7 ? 3 : v >= 4 ? 2 : 1; let tries = 0;
-      do { type = (Math.random() * HW.FOOD.length) | 0; } while (HW.FOOD[type].v !== want && ++tries < 12);
+      const l = FOODBY[v >= 7 ? 3 : v >= 4 ? 2 : 1]; type = l[(Math.random() * l.length) | 0];
     }
     if (x === undefined) { const p = MAP.spot(30, 14); x = p.x; y = p.y; }
     return this.addItem('f', type, x, y, v);
@@ -523,8 +532,8 @@
         if (it.k === 'f') {
           const er = w.r + CHARS[w.ch].eat * (w.big > 0 ? POWERS[1].eat : 1);
           if (d < w.r + (it.v >= CFG.BIG ? 7 : 3)) { eatList.push(it, w); break; }
-          if (d < er) { const k = Math.min(1, 260 * dt / d); it.x += dx * k; it.y += dy * k; }
-        } else if (d < w.r + (it.k === 'a' ? 9 : it.k === 'v' || it.k === 'm' ? 11 : 14)) { eatList.push(it, w); break; }
+          if (d < er && MAP.los(w.x, w.y, it.x, it.y, 0)) { const k = Math.min(1, 260 * dt / d); it.x += dx * k; it.y += dy * k; }   // not through a counter
+        } else if (d < w.r + (it.k === 'v' || it.k === 'm' ? 11 : 14)) { eatList.push(it, w); break; }
       }
     }
     for (let i = 0; i < eatList.length; i += 2) {
