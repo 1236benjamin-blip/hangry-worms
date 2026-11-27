@@ -9,10 +9,12 @@
   // super:   supersize. Bigger body, wins every head-on, takes less damage, eats from further away, keeps a bit of the growth.
   HW.POWERS = [
     { id: 'rampage', name: 'RAMPAGE', t: 9, speed: 1.4, col: '#ffd23f' },
-    { id: 'super', name: 'SUPERSIZE', t: 12, scale: 1.5, mass: 20, armor: 0.5, eat: 1.8, col: '#ff5a4d' }
+    { id: 'super', name: 'SUPERSIZE', t: 12, scale: 1.5, mass: 20, armor: 0.5, eat: 1.8, col: '#ff5a4d' },
+    // guard: a bubble that stops every shot and blast for its duration. Running into worms, farts and puke still get you.
+    { id: 'guard', name: 'SHOT SHIELD', t: 10, col: '#4cc9f0' }
   ];
   // how many lie around at once and how long a new one takes to turn up after a pick-up (seconds, min..max)
-  HW.PCFG = { POWERS: 2, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22], CHILL_MULT: 0.4 };
+  HW.PCFG = { POWERS: 3, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22], CHILL_MULT: 0.4 };
 
   // ---------- special guns (item kind 'g', type = index here) ----------
   // Picked up, a special gun replaces your own for `t` seconds with no ammo count. Same fields as the
@@ -60,7 +62,23 @@
     '.krrrrrrrrrk.',
     '.kRRRRRRRRRk.',
     '..kkkkkkkkk..']);
-  HW.powerSpr = [HW.pizzaSpr, HW.superSpr];
+  // shot shield
+  HW.guardSpr = sprite([
+    '.kkkkkkkkkkk.',
+    'kciiiiiiiiick',
+    'kcicccccccCck',
+    'kcicccwcccCck',
+    'kciccwwwccCck',
+    'kcicwwwwwcCck',
+    'kciccwwwccCck',
+    'kcicccwcccCck',
+    '.kciccccCCck.',
+    '.kcicccCCCck.',
+    '..kcicCCCck..',
+    '...kcCCCck...',
+    '....kcCck....',
+    '.....kkk.....']);
+  HW.powerSpr = [HW.pizzaSpr, HW.superSpr, HW.guardSpr];
 
   // special guns as held by a worm, pointing right: c sprite, px/py grip point, len = grip to muzzle (same shape as HW.gunSpr)
   HW.sgunSpr = [
