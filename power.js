@@ -23,7 +23,7 @@
   HW.FRENZY = { t: 60, rate: 2 }; HW.BOUNTY = 2;
   HW.TAUNTS = ['NOM NOM', 'BURP', 'EAT MY DUST', 'BEN SUCKS', 'TOO SLOW', 'YUM', 'HANGRY!', 'GET IN MY BELLY', 'IS THAT ALL?', 'SALAD BREATH'];
   // how many lie around at once and how long a new one takes to turn up after a pick-up (seconds, min..max)
-  HW.PCFG = { POWERS: 3, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22], CHILL_MULT: 0.4 };
+  HW.PCFG = { POWERS: 2, GUNS: 2, POWER_WAIT: [28, 45], GUN_WAIT: [26, 42], CHILL_MULT: 0.4 };
 
   // ---------- special guns (item kind 'g', type = index here) ----------
   // Picked up, a special gun replaces your own for `t` seconds with no ammo count. Same fields as the
@@ -35,7 +35,7 @@
     { id: 'flame', name: 'HOT SAUCE FLAMETHROWER', desc: 'SHORT RANGE. MELTS WORMS.', t: 12, interval: 0.055, speed: 235, dmg: 1.5, br: 5, range: 150, pellets: 1, spread: 0.2, pierce: 2, kind: 7 },
     { id: 'mini', name: 'POPCORN MINIGUN', desc: 'A WALL OF POPCORN.', t: 12, interval: 0.065, speed: 370, dmg: 2.3, br: 2, range: 340, pellets: 1, spread: 0.09, kind: 8 },
     // chill: seconds a hit worm crawls at PCFG.CHILL_MULT of its speed (hits refresh it, they do not stack)
-    { id: 'freeze', name: 'FREEZE RAY', desc: 'CHILLS WORMS TO A CRAWL.', t: 14, interval: 0.3, speed: 520, dmg: 3, br: 4, range: 420, pellets: 1, spread: 0.03, chill: 3.5, kind: 9 }
+    { id: 'freeze', name: 'FREEZE RAY', desc: 'CHILLS WORMS TO A CRAWL.', t: 14, interval: 0.3, speed: 520, dmg: 5, br: 4, range: 420, pellets: 1, spread: 0.03, chill: 3.5, kind: 9 }
   ];
 
   // ---------- sprites ----------

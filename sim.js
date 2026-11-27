@@ -5,10 +5,10 @@
   const CFG = HW.CFG = {
     W: MAP.W, H: MAP.H, SEG: 6, WORMS: 12, FOOD: 210, AMMO: 14, VEG: 15, SHROOM: 7,
     MIN_MASS: 6, SHIELD: 4, BOOST_MULT: 1.55, BOOST_COST: 6,
-    MATCH_T: 300, LIVES: 3, KILL_PTS: 20, ABIL_CD: 60, ABIL_START: 20, ZONE_T: 10, STUCK_T: 10,
+    MATCH_T: 300, LIVES: 3, KILL_PTS: 50, ABIL_CD: 60, ABIL_START: 20, ZONE_T: 10, STUCK_T: 10,
     FART_R: 76, PUKE_R: 68, SLOW_T: 4.5, SLOW_MULT: 0.5, VEG_LOSS: 0.1, TRIP_T: 10, MAX_PLAYERS: 4,
     VEG_ABIL: 10, SHROOM_ABIL: 15,   // the upside of eating your greens: seconds knocked off the fart / puke countdown
-    CRASH_T: 0.4,                    // seconds you must keep driving into another worm before it kills you (see "head vs body" in step)
+    CRASH_T: 0.6,                    // seconds you must keep driving into another worm before it kills you (see "head vs body" in step)
     BIG: 3              // food worth this much or more is drawn double size
   };
   // what a snack / meal / feast is worth (FOOD[].v in sprites.js is the class: 1, 2 or 3)
@@ -19,43 +19,47 @@
   // a bot opens fire from. dodge / abil: how reliably it sidesteps shots and uses its ability.
   // mercy: seconds after a human's spawn shield that bots still leave them alone. warm: seconds at the
   // start of a match in which bots do not attack humans at all. lead: how well it leads a moving target.
+  // grab: how keen it is on power-ups, special guns and the golden burger (also how far it will go for one).
+  // hunt: how far (px) it goes after a worm when it has a reason to: a special gun, a shot shield, a rampage, a frozen victim.
+  // way: seconds of a human's path ahead that it keeps out of, so players are not cut off by a bot crossing their nose.
+  // food: how far away (px) it notices food. Lazy eaters stay smaller and leave more for the players.
   HW.DIFFS = [
-    { name: 'EASY', skill: [0.15, 0.5], think: 1.5, engage: 120, err: 1.7, rest: 2.2, lapse: 2.2, dodge: 0.4, abil: 0.35, mercy: 5, warm: 30, lead: 0 },
-    { name: 'INTERMEDIATE', skill: [0.45, 0.9], think: 1, engage: 165, err: 1, rest: 1, lapse: 1, dodge: 1, abil: 1, mercy: 2, warm: 12, lead: 0.3 },
-    { name: 'HARD', skill: [0.8, 1], think: 0.8, engage: 215, err: 0.55, rest: 0.55, lapse: 0.3, dodge: 1.3, abil: 1, mercy: 0, warm: 0, lead: 1 }
+    { name: 'EASY', skill: [0.15, 0.5], think: 1.5, engage: 120, err: 1.7, rest: 2.2, lapse: 2.2, dodge: 0.4, abil: 0.35, mercy: 5, warm: 30, lead: 0, grab: 0.3, hunt: 140, way: 1.5, food: 120 },
+    { name: 'INTERMEDIATE', skill: [0.45, 0.9], think: 1, engage: 165, err: 1, rest: 1.3, lapse: 1, dodge: 1, abil: 0.5, mercy: 2, warm: 12, lead: 0.3, grab: 1, hunt: 300, way: 0.9, food: 300 },
+    { name: 'HARD', skill: [0.8, 1], think: 0.8, engage: 205, err: 0.55, rest: 0.95, lapse: 0.3, dodge: 1.3, abil: 1, mercy: 0, warm: 0, lead: 1, grab: 1.5, hunt: 460, way: 0.45, food: 300 }
   ];
 
   // gun: interval s, speed px/s, dmg mass, br bullet radius, range px
   const CHARS = HW.CHARS = [
     {
-      id: 'ben', name: 'BEN', big: true, startMass: 48, speed: 104, turn: 2.7, baseR: 8, eat: 30, ability: 'fart',
+      id: 'ben', name: 'BEN', big: true, startMass: 46, speed: 104, turn: 2.7, baseR: 8, eat: 24, ability: 'fart',
       colors: [['#f08a1c', '#ffd23f'], ['#e03c32', '#ffb0a8'], ['#d9d9e0', '#8d8fa0'], ['#b06a3a', '#e8b574']],
       blurb: 'BIG. SLOW. EATS FROM FAR AWAY.', stats: { size: 5, speed: 1, power: 4, rate: 2 },
-      gun: { name: 'BURGER CANNON', desc: 'SLOW SHOTS. BIG FAST BULLETS.', interval: 0.9, speed: 440, dmg: 14, br: 5, range: 430, max: 18, pickup: 9, start: 9, pellets: 1, spread: 0.02, kind: 0 }
+      gun: { name: 'BURGER CANNON', desc: 'SLOW SHOTS. BIG FAST BULLETS.', interval: 1.05, speed: 440, dmg: 14, br: 5, range: 430, max: 18, pickup: 9, start: 9, pellets: 1, spread: 0.02, kind: 0 }
     },
     {
-      id: 'chandler', name: 'CHANDLER', big: true, startMass: 40, speed: 110, turn: 2.9, baseR: 8, eat: 15, ability: 'fart',
+      id: 'chandler', name: 'CHANDLER', big: true, startMass: 44, speed: 110, turn: 2.9, baseR: 8, eat: 15, ability: 'fart',
       colors: [['#2b6fd6', '#7fc4ff'], ['#16a085', '#7dffd8'], ['#c0392b', '#ff9a8a'], ['#6c5ce7', '#c3b8ff']],
       blurb: 'BIG, BUT QUICKER THAN BEN.', stats: { size: 4, speed: 2, power: 4, rate: 2 },
-      gun: { name: 'SODA SCATTERGUN', desc: '5 PELLET BLAST. DEADLY UP CLOSE, SHORT RANGE.', interval: 0.95, speed: 370, dmg: 4, br: 2, range: 185, max: 14, pickup: 7, start: 7, pellets: 5, spread: 0.5, kind: 1 }
+      gun: { name: 'SODA SCATTERGUN', desc: '5 PELLET BLAST. DEADLY UP CLOSE, SHORT RANGE.', interval: 1.1, speed: 370, dmg: 4, br: 2, range: 185, max: 14, pickup: 7, start: 7, pellets: 5, spread: 0.5, kind: 1 }
     },
     {
       id: 'nate', name: 'NATE', big: false, startMass: 32, speed: 130, turn: 4.4, baseR: 6, eat: 13, ability: 'puke',
       colors: [['#7ed321', '#3d8b1f'], ['#f5d547', '#b8860b'], ['#ff8fd0', '#c2409a'], ['#59d9d9', '#1f7f8b']],
       blurb: 'SMALL, FAST AND TWITCHY.', stats: { size: 2, speed: 5, power: 2, rate: 5 },
-      gun: { name: 'GUMBALL SMG', desc: 'SPRAYS FAST. BULLETS ARE SLOW AND WEAK.', interval: 0.13, speed: 250, dmg: 2.6, br: 2, range: 290, max: 110, pickup: 45, start: 50, pellets: 1, spread: 0.13, kind: 2 }
+      gun: { name: 'GUMBALL SMG', desc: 'SPRAYS FAST. BULLETS ARE SLOW AND WEAK.', interval: 0.15, speed: 250, dmg: 3, br: 2, range: 290, max: 110, pickup: 45, start: 50, pellets: 1, spread: 0.13, kind: 2 }
     },
     {
       id: 'wesley', name: 'WESLEY', big: false, startMass: 34, speed: 128, turn: 4.3, baseR: 6, eat: 13, ability: 'puke',
       colors: [['#9b5de5', '#ff7eb6'], ['#3ec1d3', '#f6f7d7'], ['#ff9a3c', '#ffe26a'], ['#5d6d7e', '#aeb6bf']],
       blurb: 'SMALL, FAST, SHARP SHOOTER.', stats: { size: 2, speed: 4, power: 3, rate: 3 },
-      gun: { name: 'KEBAB SKEWER', desc: 'ACCURATE. PIERCES THROUGH WORMS.', interval: 0.48, speed: 390, dmg: 10, br: 3, range: 390, max: 40, pickup: 16, start: 20, pellets: 1, spread: 0.01, pierce: 3, kind: 3 }
+      gun: { name: 'KEBAB SKEWER', desc: 'ACCURATE. PIERCES THROUGH WORMS.', interval: 0.58, speed: 390, dmg: 10.2, br: 3, range: 390, max: 40, pickup: 16, start: 20, pellets: 1, spread: 0.01, pierce: 3, kind: 3 }
     },
     {
-      id: 'jeff', name: 'JEFF', big: true, startMass: 46, speed: 104, turn: 2.6, baseR: 8, eat: 15, ability: null, weakPuke: true,
+      id: 'jeff', name: 'JEFF', big: true, startMass: 58, speed: 104, turn: 2.8, baseR: 8, eat: 18, ability: null, weakPuke: true,
       colors: [['#6b7a3a', '#3e4a22'], ['#8d6e63', '#4e342e'], ['#546e7a', '#263238'], ['#a67c00', '#5c4400']],
       blurb: 'NO ABILITY. FART AND PUKE BOTH KILL HIM.', stats: { size: 4, speed: 1, power: 5, rate: 1 },
-      gun: { name: 'MEATBALL ROCKET', desc: 'HUGE BLAST RADIUS. FEW ROCKETS.', interval: 1.7, speed: 220, dmg: 24, br: 4, range: 400, max: 8, pickup: 3, start: 4, pellets: 1, spread: 0.01, blast: 80, accel: 320, vmax: 390, kind: 4 }
+      gun: { name: 'MEATBALL ROCKET', desc: 'HUGE BLAST RADIUS. FEW ROCKETS.', interval: 1.7, speed: 220, dmg: 26.5, br: 4, range: 400, max: 10, pickup: 4, start: 6, pellets: 1, spread: 0.01, blast: 90, accel: 320, vmax: 390, kind: 4 }
     }
   ];
 
@@ -580,6 +584,11 @@
     // Every touch is collected first and judged afterwards, so the outcome never depends on the order
     // worms happen to be stored in.
     const touch = this.touch || (this.touch = []); touch.length = 0;
+    // A bot's rampage does not count against a player the bots are leaving alone (mercy timer, warm-up: see
+    // bots.js). Bots steer clear of them, but a rampage kills on touch and steering cannot promise never to
+    // clip a tail, so here the bot just gets an ordinary bump.
+    const warm = S.players.length > 0 && CFG.MATCH_T - M.t < HW.DIFFS[S.diff].warm;
+    const rams = (a, b) => a.rage > 0 && !(b.rage > 0) && !(a.isBot && b.pid >= 0 && (warm || b.mercy > 0));
     for (const a of S.worms) {
       if (!a.alive) continue; a.hold = false; if (a.bumpT > 0) a.bumpT -= dt;
       if (a.shield > 0) { a.crash = 0; continue; }
@@ -592,7 +601,7 @@
         const cd = a.r * 0.7 + b.r * 0.78, p = b.pts; let hit = -1, hq = cd * cd;   // a graze is forgiven: the circles must really overlap
         for (let i = 0; i < p.length; i++) { const dx = p[i].x - a.x, dy = p[i].y - a.y, q = dx * dx + dy * dy; if (q < hq) { hq = q; hit = i; } }
         if (hit < 0) continue;
-        if (a.rage > 0 && !(b.rage > 0)) { touch.push(a, b, hit); continue; }   // a rampage does not wait: it goes straight through them
+        if (rams(a, b)) { touch.push(a, b, hit); continue; }   // a rampage does not wait: it goes straight through them
         const d = Math.sqrt(hq) - cd; if (d < deep) { deep = d; wb = b; wi = hit; wq = hq; wc = cd; }   // deepest contact decides
       }
       if (!wb) { if (a.crash > 0) a.crash = Math.max(0, a.crash - dt * 2); continue; }
@@ -619,7 +628,7 @@
       //    worm that got run into dies (unless it is rampaging too, in which case the usual rule holds).
       for (let i = 0; i < touch.length; i += 3) {
         if (touch[i + 2] <= 0) continue; const a = touch[i], b = touch[i + 1];
-        if (a.rage > 0 && !(b.rage > 0)) mark(b, a, 'rampage'); else mark(a, b, 'crash');
+        if (rams(a, b)) mark(b, a, 'rampage'); else mark(a, b, 'crash');
       }
       // 2) head against head: the lighter worm dies, equal worms both die. A worm that has just
       //    crashed into a body has already lost: it cannot also win (or lose) a head-on this step.
@@ -629,7 +638,7 @@
         let out = false; for (let k = 0; k < n; k += 3) if (dead[k] === a || dead[k] === b) { out = true; break; }
         if (out) continue;
         // rampage beats supersize beats nothing; between equals the heavier worm wins
-        const pa = a.rage > 0 ? 2 : a.big > 0 ? 1 : 0, pb = b.rage > 0 ? 2 : b.big > 0 ? 1 : 0;
+        const pa = rams(a, b) || (a.rage > 0 && b.rage > 0) ? 2 : a.big > 0 ? 1 : 0, pb = rams(b, a) || (a.rage > 0 && b.rage > 0) ? 2 : b.big > 0 ? 1 : 0;
         if (pa > pb) mark(b, a, pa === 2 ? 'rampage' : 'bonk');
         else if (pb > pa) mark(a, b, pb === 2 ? 'rampage' : 'bonk');
         else { if (a.mass <= b.mass) mark(a, b, 'bonk'); if (b.mass <= a.mass) mark(b, a, 'bonk'); }
