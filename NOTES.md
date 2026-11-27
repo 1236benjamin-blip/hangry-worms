@@ -81,6 +81,10 @@ Balance idea: big worms hit hard and survive more hits but turn like trucks; sma
 
 Run them with `python3 -m http.server 8377` in this folder, then `python3 test/play.py /tmp/out`.
 
+## Publishing
+- Live at https://1236benjamin-blip.github.io/hangry-worms/ (GitHub Pages, `main` branch, root folder). Repo: https://github.com/1236benjamin-blip/hangry-worms
+- This Mac has no GitHub CLI or git credentials, so files were uploaded through the GitHub website. The local git history and the GitHub history are therefore separate: to update the live game, upload the changed files again on the repo's "Add file > Upload files" page (or set up git credentials and force-push the local history).
+
 ## Known issues / not done
 - Not yet tested on a real phone or with a real controller (only emulated touch and a simulated gamepad). Button sizes and stick feel may want tuning after real play.
 - iPhone Safari cannot go true fullscreen; "Add to Home Screen" gives the cleanest view. Android goes fullscreen and locks landscape when a game starts.
