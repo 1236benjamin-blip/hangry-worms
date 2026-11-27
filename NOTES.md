@@ -113,7 +113,7 @@ EASY (the default), INTERMEDIATE and HARD: the BOTS button on the pick-your-worm
 
 ## Testing done (headless Chrome)
 - `test/play.py`: phone landscape (844x390 @3x) with real touch events for menu taps, move stick, aim stick + firing, boost, ability and pause buttons; hazards; desktop keyboard + mouse; 2-player split screen with a simulated gamepad for P2; gamepad menu navigation.
-- `test/online.py`: host in one tab, phone-sized client in another through the real PeerJS cloud: join by code, input round trip, ability, item and position sync, death and respawn, client leaving, host leaving.
+- `test/online.py` has three parts (last argument `a`, `b` or `c`). Part A, no network: net.js driven through fake connections on a virtual clock: item / worm / power-up / special gun sync, message sizes, malformed input, slow clients, and client-side prediction measured at 67 / 150 / 295 ms round trip (steering, walls, obstacles, bumps, respawn, teleport, lost snapshots). Part C, no internet: the real game in two tabs through a stand-in transport with 100 ms each way. Part B: the real PeerJS cloud (join by code, input round trip, leaving, a fifth player turned away).
 - `test/match.py`: lives, kill credit, score, clock, results podium, play again, 2-player spectating, online match sync and automatic next match.
 - `test/balance.py`: fast-forwards 20 minutes of bots-only play and prints kills, deaths, lifetimes and causes of death per worm. Used to tune damage, speeds and bot caution.
 - `test/perf.py`: per-frame simulation and draw cost.
@@ -130,7 +130,7 @@ Run them with `python3 -m http.server 8377` in this folder, then `python3 test/p
 - Online uses the free public PeerJS server (STUN plus PeerJS's best-effort free TURN). Two players behind strict mobile-carrier or corporate NATs may fail to connect (there is no paid relay). Same Wi-Fi always works.
 - If the host's phone goes to sleep or the browser is fully backgrounded on mobile, clients see WAITING FOR HOST and leave after 45 s; if the host quits, the room ends. A client that goes silent is idled after 1.5 s and removed after 30 s.
 - Online is one player per device; split screen is offline only.
-- Clients see their own worm with a small delay (no client-side prediction). Fine on normal connections, mushy on bad ones.
+- Online clients predict their own worm (`net.js`, `PRED_LEAD_MAX` 0.15 s): steering is immediate. On links slower than about 140 ms round trip the head is drawn at most 0.15 s ahead of the host's picture, so a close pass never looks more than about a head and a half safer than it is. Other worms are still drawn about 70 ms + latency in the past. Food vanishes slightly behind the drawn head at high ping and your own shots leave from the host's muzzle position (cosmetic).
 - Balance is tuned on bot-only simulations (bots now dodge a little and steer on real turning arcs). After the bot engagement range was capped, the spread is roughly K/D 0.8 to 1.25 with run-to-run variance; expect to revisit after real matches.
 - In 2-player on a phone, P1's touch controls sit over P2's half of the screen (inherent to one touch + one controller).
 - Scores from before the match system (pure size) and after (size + kills) share the same saved best.
