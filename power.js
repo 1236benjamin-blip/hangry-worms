@@ -12,7 +12,7 @@
     { id: 'super', name: 'SUPERSIZE', t: 12, scale: 1.5, mass: 20, armor: 0.5, eat: 1.8, col: '#ff5a4d' }
   ];
   // how many lie around at once and how long a new one takes to turn up after a pick-up (seconds, min..max)
-  HW.PCFG = { POWERS: 2, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22] };
+  HW.PCFG = { POWERS: 2, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22], CHILL_MULT: 0.4 };
 
   // ---------- special guns (item kind 'g', type = index here) ----------
   // Picked up, a special gun replaces your own for `t` seconds with no ammo count. Same fields as the
@@ -22,7 +22,9 @@
     { id: 'ray', name: 'RAY GUN', desc: 'ZAPS STRAIGHT THROUGH EVERYBODY.', t: 14, interval: 0.34, speed: 720, dmg: 10, br: 3, range: 520, pellets: 1, spread: 0.01, pierce: 99, kind: 5 },
     { id: 'bazooka', name: 'ROCKET LAUNCHER', desc: 'ENORMOUS BLAST.', t: 14, interval: 1.0, speed: 230, dmg: 30, br: 5, range: 460, pellets: 1, spread: 0.01, blast: 115, accel: 340, vmax: 420, kind: 6 },
     { id: 'flame', name: 'HOT SAUCE FLAMETHROWER', desc: 'SHORT RANGE. MELTS WORMS.', t: 12, interval: 0.055, speed: 235, dmg: 1.5, br: 5, range: 150, pellets: 1, spread: 0.2, pierce: 2, kind: 7 },
-    { id: 'mini', name: 'POPCORN MINIGUN', desc: 'A WALL OF POPCORN.', t: 12, interval: 0.065, speed: 370, dmg: 2.3, br: 2, range: 340, pellets: 1, spread: 0.09, kind: 8 }
+    { id: 'mini', name: 'POPCORN MINIGUN', desc: 'A WALL OF POPCORN.', t: 12, interval: 0.065, speed: 370, dmg: 2.3, br: 2, range: 340, pellets: 1, spread: 0.09, kind: 8 },
+    // chill: seconds a hit worm crawls at PCFG.CHILL_MULT of its speed (hits refresh it, they do not stack)
+    { id: 'freeze', name: 'FREEZE RAY', desc: 'CHILLS WORMS TO A CRAWL.', t: 14, interval: 0.3, speed: 520, dmg: 3, br: 4, range: 420, pellets: 1, spread: 0.03, chill: 3.5, kind: 9 }
   ];
 
   // ---------- sprites ----------
@@ -102,13 +104,28 @@
       'kqqSSSksssssssssqk',
       'kkkkkkkkkkkkkkkkk.',
       '..kbBk............',
-      '..kkkk............']), px: 5, py: 4, len: 13 }
+      '..kkkk............']), px: 5, py: 4, len: 13 },
+    // freeze ray: the ray gun's frosty cousin, iced barrel, snowflake tip
+    { c: sprite([
+      '....kkkk.........',
+      '...kiwwik.k.k.k..',
+      '.kkkiiiikkikikik.',
+      'kCCkiwiiccccccciw',
+      'kCckiiiiCCcCcCcik',
+      'kCCkkkkkkkkkkkkk.',
+      'kCCk.kqk.........',
+      '.kk..kqk.........',
+      '.....kkk.........']), px: 5, py: 4, len: 12 }
   ];
   // shots that are sprites (flames and popcorn are drawn as plain squares)
   HW.raySpr = sprite([
     '.luuuuuuul.',
     'lwwwwwwwwwl',
     '.luuuuuuul.']);
+  HW.iceSpr = sprite([
+    '.icccccci.',
+    'iwwwwwwwwi',
+    '.icccccci.']);
   HW.bigRocketSpr = sprite([
     '.kkkkkkkk..',
     'kraaaaaawk.',
