@@ -351,7 +351,7 @@
     }
     if (App.locals.length > 1) R.divider(App.locals[1].view.x);
     if (App.previews.length) drawPreviews();
-    for (const l of App.locals) if (l.useTouch) R.drawTouch((In.tpads || [In.touch])[l.dev.tpad || 0] || In.touch, l.me, t, CHARS[l.ch]);
+    for (const l of App.locals) if (l.useTouch) R.drawTouch(In.tpads[l.dev.tpad || 0], l.me, t, CHARS[l.ch]);
   }
   // step the authoritative sim, play its events, feed the network
   function advance(dt, maxSteps, silent) {
