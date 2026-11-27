@@ -204,6 +204,13 @@ try:
     for i in range(5):
         t.eval("(()=>{const m=HW.App.locals[0].me;if(!m)return;m.shield=5;m.sg=%d;m.sgT=5;m.rage=%d;m.guard=%d;m.big=%d;m.sauce=%d;m.chill=%d;HW.App.locals[0].player.inp.taunt=true})()" % (i + 1, 5 * (i == 0), 5 * (i == 1), 5 * (i == 2), 5 * (i == 3), 3 * (i == 4)))
         t.touch("touchStart", [(2, 650, 250)]); t.touch("touchMove", [(2, 700, 240)]); t.pump(0.8); t.shot(SP + "/pw_gun%d.png" % i); t.touch("touchEnd", [])
+    # the taunt button (a real tap), the T key
+    t.eval("(()=>{window.__ta=0;const s=HW.App.sim,st=s.step;s.step=function(d){const r=st.call(this,d);for(const e of this.S.events)if(e[0]==='taunt'&&HW.App.locals[0].me&&e[3]===HW.App.locals[0].me.id)__ta++;return r};const m=HW.App.locals[0].me;if(m){m.shield=30;m.tauntT=0}})()")
+    Lt = J(t, "HW.Input.touch.layout.taunt"); k = t.eval("HW.Render.canvas.getBoundingClientRect().width/HW.Render.W")
+    ok(Lt["r"] * 2 * k >= 43.5, "touch: taunt button is at least 44 CSS px", Lt["r"] * 2 * k)
+    t.touch("touchStart", [(5, Lt["x"] * k, Lt["y"] * k)]); t.pump(0.3); t.touch("touchEnd", []); t.pump(0.3); t.shot(SP + "/pw_taunt.png")
+    ok(t.eval("__ta") == 1 and J(t, "!!(HW.App.locals[0].me&&HW.App.locals[0].me._say)"), "touch: tapping the taunt button taunts once and shows a speech bubble", t.eval("__ta"))
+    ok(J(t, "(()=>{const T=HW.Input.touch;return T.move.on||T.aim.on})()") is False, "touch: the taunt tap did not start a stick")
     t.eval("HW.App.sim.S.match.t=60.4"); t.pump(1.0); t.shot(SP + "/pw_frenzy.png")
     ok(J(t, "HW.App.sim.S.match.frenzy") is True and J(t, "!!(HW.App.locals[0].view.banner&&HW.App.locals[0].view.banner.s.indexOf('FRENZY')>=0)"), "in game: the frenzy banner shows")
     t.eval("(()=>{const S=HW.App.sim.S;S.comps[0].st.veg=3;S.match.t=0.2})()"); t.pump(1.2); t.shot(SP + "/pw_results.png")

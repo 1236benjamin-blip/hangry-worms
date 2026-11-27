@@ -80,8 +80,8 @@
       ['FART: TOXIC CLOUD, KILLS ANY OTHER WORM.  PUKE: STICKY PUDDLE, STUCK 10 SEC.', '#d7e84a'],
       ['PHONE: LEFT THUMB MOVES. RIGHT THUMB AIMS AND SHOOTS. BOOST + ABILITY BUTTONS.', '#9be7ff'],
       ['KEYBOARD: WASD OR ARROWS MOVE. MOUSE AIMS, CLICK SHOOTS (OR SPACE).', '#9be7ff'],
-      ['          SHIFT BOOSTS. E USES YOUR ABILITY. ESC PAUSES.', '#9be7ff'],
-      ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY.', '#9be7ff'],
+      ['          SHIFT BOOSTS. E USES YOUR ABILITY. T TAUNTS. ESC PAUSES.', '#9be7ff'],
+      ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY. B TAUNT.', '#9be7ff'],
       ['2 PLAYERS: EACH HALF OF THE SCREEN HAS ITS OWN TOUCH CONTROLS.', '#ffb0a8'],
       ['           OR P1 WASD+MOUSE, P2 CONTROLLER OR ARROWS, ENTER, SHIFT, PERIOD.', '#ffb0a8'],
       ['ONLINE: ONE DEVICE HOSTS AND SHARES THE 4 LETTER ROOM CODE. UP TO 4 PLAYERS.', '#ffb0a8']
@@ -358,7 +358,7 @@
     if (In.pausePressed) { In.pausePressed = false; setPause(!App.paused); }
     const frozen = App.paused && !Net.role;
     for (const l of App.locals) {
-      const o = App.paused || App.screen === 'results' ? { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false } : In.read(l.dev, l.view);
+      const o = App.paused || App.screen === 'results' ? { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false, taunt: false } : In.read(l.dev, l.view);
       if (o.pause) { setPause(true); }
       let p;
       if (client) {

@@ -565,6 +565,12 @@
       c.globalAlpha = 1; text(c, A, b.x, b.y - (live ? 7 : 3), live ? '#fff' : '#99a', { align: 0.5 });
       if (live) text(c, ready ? 'GO!' : Math.ceil(me.abil), b.x, b.y + 3, ready ? '#fff' : '#ccd', { align: 0.5 });
     }
+    // taunt: a little speech bubble
+    b = L.taunt;
+    if (b) {
+      c.globalAlpha = T.taunt ? 0.9 : 0.4; c.drawImage(disc('#ffffff', b.r), b.x - b.r, b.y - b.r); c.drawImage(disc('#1a1423', b.r - 2), b.x - b.r + 2, b.y - b.r + 2);
+      c.globalAlpha = 0.85; text(c, b.r >= 14 ? 'LOL' : '!', b.x, b.y - 3, '#ffffff', { align: 0.5, shadow: false }); c.globalAlpha = 1;
+    }
     b = L.pause; if (!b) return;   // only P1's half carries the pause button
     const g = Math.min((b.w >> 1) - 9, Math.max(3, (b.h - 8) >> 1)), bx = b.x + (b.w >> 1);   // bars no further apart than they are tall (the split-screen button can be flat)
     panel(c, b.x, b.y, b.w, b.h, 0.5); c.fillStyle = '#ccd'; c.fillRect(bx - g - 3, b.y + 4, 3, b.h - 8); c.fillRect(bx + g, b.y + 4, 3, b.h - 8);

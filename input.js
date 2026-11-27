@@ -6,7 +6,7 @@
   const AIM_GRACE = 120;                // ms a thumb may sit still on the aim side before auto-aim fire starts
   // One full touch control set. Solo uses pad 0 over the whole screen. In split screen every player has a
   // pad inside their own half, so two people can share one phone (each holds an end, or it lies on a table).
-  const mkPad = i => ({ i, move: mkStick(MOVE_DZ), aim: mkStick(AIM_DZ), boost: false, boostId: -1, abil: false, abilHeld: false, pause: false, tap: false, shot: false, layout: null });
+  const mkPad = i => ({ i, move: mkStick(MOVE_DZ), aim: mkStick(AIM_DZ), boost: false, boostId: -1, abil: false, abilHeld: false, pause: false, tap: false, shot: false, taunt: false, layout: null });
   const In = HW.Input = {
     keys: {}, mouse: { x: 0, y: 0, down: false, rdown: false, clicked: false, active: false },
     tpads: [mkPad(0), mkPad(1)],   // pad 1 only has a layout while two local players are on screen
@@ -73,9 +73,11 @@
     // Where the thumbs are expected to rest (the sticks float: they start wherever a thumb lands on its half).
     let mx = vx + c(two ? Math.max(88, iL + 68) : Math.max(124, iL + 104)), ax = x1 - c(two ? Math.max(100, iR + 80) : Math.max(139, iR + 112));
     if (two) { mx = Math.min(mx, Math.floor(mid) - ring - 2); ax = Math.max(ax, Math.ceil(mid) + ring + 2); }   // drawn inside their own half of the view
+    // taunt: a small button under the lives and kill count, out of the way of both thumbs (44 CSS px, like the pause hit zone)
+    const rT = Math.max(11, Math.ceil(22 / sc)), taunt = { x: vx + c(iL) + 5 + rT, y: 5 + (small ? 50 : 60) + 22 + c(6) + rT, r: rT, hit: rT + c(2) };
     P.layout = {
       x0: vx, x1, mid, moveIdle: { x: mx, y: H - c(100) }, aimIdle: { x: ax, y: H - c(100) },
-      boost, abil, pause, stickR, ring, scale: sc,
+      boost, abil, pause, taunt, stickR, ring, scale: sc,
       edge, edgeB: c(Math.max(16, ins.b)),   // palm strips: sides, and bottom (that one also covers the home indicator)
       safe: { l: c(ins.l), r: c(ins.r), t: c(ins.t), b: c(ins.b) }   // insets in canvas px, for the HUD
     };
@@ -144,6 +146,7 @@
       if (L.pause && inPause(p, L.pause)) { P.pause = true; owners.set(id, { pad: P, role: 'pause' }); }
       else if (hasAbil(P) && inC(p, L.abil)) { owners.set(id, { pad: P, role: 'abil', side: sideOf(P, p), sx: p.x, sy: p.y }); P.abilHeld = true; }
       else if (inC(p, L.boost)) { owners.set(id, { pad: P, role: 'boost' }); P.boost = true; P.boostId = id; }
+      else if (inC(p, L.taunt)) { owners.set(id, { pad: P, role: 'taunt' }); P.taunt = true; }
       else toStick(P, id, p, sideOf(P, p));
     }
   }
@@ -181,7 +184,7 @@
   // called when a game starts and on pause / resume: drop everything transient, on every device
   let anchor = null;
   In.resetTouch = function () {
-    releaseTouch(); for (const P of PADS) P.abil = P.pause = P.tap = P.shot = false;
+    releaseTouch(); for (const P of PADS) P.abil = P.pause = P.tap = P.shot = P.taunt = false;
     for (const k in hit) delete hit[k];
     In.mouse.clicked = false; In.mouse.active = false; anchor = null;   // mouse aim comes back when the mouse is really used (see mousemove)
     seats.clear();
@@ -282,7 +285,8 @@
   // view = viewport of this player (for mouse aim). Returns one input frame.
   // Also writes dev.kind ('kb'|'pad'|'touch', what this player used last) and dev.hasPad.
   In.read = function (dev, view) {
-    const K = In.keys, o = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false };
+    const K = In.keys, o = { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false, taunt: false };
+    let tauntDown = false;
     const pv = dev.prev || (dev.prev = {});
     const kd = c => { const h = hit[c]; if (h) hit[c] = false; return !!(K[c] || h); };
     const any = function () { let r = false; for (let i = 0; i < arguments.length; i++) if (kd(arguments[i])) r = true; return r; };   // no short-circuit: every latch is consumed
@@ -290,10 +294,10 @@
     if (dev.kb) {
       const wasd = dev.kb !== 'arrows', arr = dev.kb !== 'wasd';
       let x = 0, y = 0, f = false, b = false;
-      if (wasd) { if (kd('KeyA')) x--; if (kd('KeyD')) x++; if (kd('KeyW')) y--; if (kd('KeyS')) y++; f = kd('Space'); b = kd('ShiftLeft'); abilDown = any('KeyE', 'KeyQ', 'KeyF'); }
+      if (wasd) { if (kd('KeyA')) x--; if (kd('KeyD')) x++; if (kd('KeyW')) y--; if (kd('KeyS')) y++; f = kd('Space'); b = kd('ShiftLeft'); abilDown = any('KeyE', 'KeyQ', 'KeyF'); tauntDown = kd('KeyT'); }
       if (arr) {
         if (kd('ArrowLeft')) x--; if (kd('ArrowRight')) x++; if (kd('ArrowUp')) y--; if (kd('ArrowDown')) y++;
-        f = any('Enter', 'Slash', 'Numpad0', 'NumpadEnter') || f; b = kd('ShiftRight') || b; abilDown = any('Period', 'Comma', 'NumpadDecimal') || abilDown;
+        f = any('Enter', 'Slash', 'Numpad0', 'NumpadEnter') || f; b = kd('ShiftRight') || b; abilDown = any('Period', 'Comma', 'NumpadDecimal') || abilDown; tauntDown = any('Quote', 'Backslash', 'NumpadAdd') || tauntDown;
       }
       if (x || y) { o.mx = x; o.my = y; }
       if (f) { o.fire = true; o.auto = true; tapDown = true; }
@@ -324,6 +328,7 @@
         if (bp(g, 6) || bp(g, 0)) { o.boost = true; if (bp(g, 0)) tapDown = true; act = true; }
         if (bp(g, 2) || bp(g, 4) || bp(g, 3)) { abilDown = true; act = true; }
         if (bp(g, 9)) { pauseDown = true; act = true; }
+        if (bp(g, 1) || bp(g, 8)) { tauntDown = true; act = true; }   // B / Back: taunt
         if (act) { kind = 'pad'; pst(g).used = true; }
       }
     }
@@ -342,11 +347,13 @@
       if (P.boost) o.boost = true;
       if (P.abil) { o.abil = true; P.abil = false; }
       if (P.pause) { o.pause = true; P.pause = false; }
+      if (P.taunt) { o.taunt = true; P.taunt = false; }
       if (P.tap) { o.tap = true; P.tap = false; }
       if (m.on || a.on || P.boost || o.abil || o.tap) kind = 'touch';
     }
     if (abilDown && !pv.abil) o.abil = true; pv.abil = abilDown;
     if (pauseDown && !pv.pause) o.pause = true; pv.pause = pauseDown;
+    if (tauntDown && !pv.taunt) o.taunt = true; pv.taunt = tauntDown;
     if (tapDown && !pv.tap) o.tap = true; pv.tap = tapDown;
     if (kind) { dev.kind = kind; if (dev.touch && !dev.tpad) In.lastKind = kind; }   // the control hints of solo / P1 follow P1 only
     return o;

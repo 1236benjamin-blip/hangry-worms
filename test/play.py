@@ -96,6 +96,16 @@ for(let i=0;i<n;i++){const L=I.tpads[i].layout,vx=n>1?i*(W-hw):0,vw=n>1?hw:W,x1=
   const lo=40,hi=n>1?46:60;
   if(L.stickR*s<lo||L.stickR*s>hi)B('stick travel not '+lo+'-'+hi+' css px: '+L.stickR*s);
   if(L.edge*s<12||L.edgeB<L.edge||L.edgeB<sa.b)B('palm strip too thin: '+[L.edge,L.edgeB]);
+  // taunt button: a proper target, on the move half, under the minimap block, clear of the resting move thumb and the palm strip
+  const Tn=L.taunt;
+  if(!Tn)B('no taunt button');
+  else{
+    if(Tn.r*2*s<43.5)B('taunt drawn smaller than 44 css px: '+Tn.r*2*s);
+    if(Tn.x-Tn.r<vx+iL||Tn.x+Tn.hit>mid)B('taunt outside the safe area / move half');
+    for(const q of top)if(cr(Tn,Tn.r,q))B('taunt overlaps '+q[0]);
+    if(d(Tn,L.moveIdle)<Tn.hit+L.ring+8/s)B('taunt within 8 css px of the idle move ring');
+    if(L.pause&&cr(Tn,Tn.hit,[0,L.pause.x-L.pause.pad,0,L.pause.x+L.pause.w+L.pause.pad,L.pause.y+L.pause.h+L.pause.padY]))B('taunt hit zone overlaps pause');
+  }
 }
 return bad})()"""
 
