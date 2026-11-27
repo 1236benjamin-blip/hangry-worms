@@ -23,7 +23,7 @@
   HW.FRENZY = { t: 60, rate: 2 }; HW.BOUNTY = 2;
   HW.TAUNTS = ['NOM NOM', 'BURP', 'EAT MY DUST', 'BEN SUCKS', 'TOO SLOW', 'YUM', 'HANGRY!', 'GET IN MY BELLY', 'IS THAT ALL?', 'SALAD BREATH'];
   // how many lie around at once and how long a new one takes to turn up after a pick-up (seconds, min..max)
-  HW.PCFG = { POWERS: 2, GUNS: 2, POWER_WAIT: [28, 45], GUN_WAIT: [26, 42], CHILL_MULT: 0.4 };
+  HW.PCFG = { POWERS: 3, GUNS: 3, POWER_WAIT: [30, 48], GUN_WAIT: [28, 46], CHILL_MULT: 0.4 };
 
   // ---------- special guns (item kind 'g', type = index here) ----------
   // Picked up, a special gun replaces your own for `t` seconds with no ammo count. Same fields as the
