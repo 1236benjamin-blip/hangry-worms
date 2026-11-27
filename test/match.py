@@ -143,7 +143,7 @@ try:
     awards_ok = r["hostAwards"] and r["awards"] == r["hostAwards"]
     # ---- the newer things a client has to be shown as well (what render.js and main.js read from the mirror) ----
     r2 = J(t, """(()=>{const X=MX,s=X.sim,S=s.S,G=X.G;MT.tick(X,30);const w=MT.myWorm(X),h=X.host.worm;if(!w||!h)return null;
-      w.shield=0;h.shield=0;const ids=[s.addItem('p',1,w.x+60,w.y,0).id,s.addItem('g',3,w.x-60,w.y,0).id,s.addItem('x',0,w.x,w.y+70,HW.GOLD.v).id];
+      w.shield=0;h.shield=0;w.stuck=h.stuck=99;/* frozen: a moving worm would drive over the pickups laid out round it */const ids=[s.addItem('p',1,w.x+60,w.y,0).id,s.addItem('g',3,w.x-60,w.y,0).id,s.addItem('x',0,w.x,w.y+70,HW.GOLD.v).id];
       w.rage=5;w.big=5;w.guard=5;w.sauce=5;w.sg=3;w.sgT=9;MT.tick(X,8);const mw=G.wmap.get(w.id)||{};
       const items=ids.map(id=>{const it=G.items.get(id);return it?[it.k,it.type,it.v]:null});
       // a ray gun bolt fired next to the client

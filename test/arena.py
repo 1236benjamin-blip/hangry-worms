@@ -585,7 +585,7 @@ def sec_spawns(t):
           q.shield=[Math.min(q.shield[0],w.shield),Math.max(q.shield[1],w.shield)];q.mercy=[Math.min(q.mercy[0],w.mercy),Math.max(q.mercy[1],w.mercy)];
           // nothing solid right in front of the nose
           let a=0;while(a<200&&AT.clear(w.x+Math.cos(w.ang)*a,w.y+Math.sin(w.ang)*a)>w.r)a+=4;if(a<q.ahead)q.ahead=a;
-          if(!AT.fin(w)||w.mass<HW.CHARS[w.ch].startMass||w.ammo!==HW.CHARS[w.ch].gun.start||w.abil<HW.CFG.ABIL_START-0.1)q.bad++}
+          if(!AT.fin(w)||w.mass<HW.CHARS[w.ch].startMass||w.ammo<HW.CHARS[w.ch].gun.start||w.abil<HW.CFG.ABIL_START-0.1)q.bad++}
         S.events=[];S.adds.length=0;S.rems.length=0;
         if(i%5===0){const p=s.spawnPos(true),q=R.pos;q.n++;const c=AT.clear(p.x,p.y),wl=Math.min(p.x,p.y,C.W-p.x,C.H-p.y);if(c<q.clear)q.clear=c;if(wl<q.wall)q.wall=wl;q.worm.push(wormD(p.x,p.y,null));const z=zoneD(p.x,p.y);if(z<q.zone)q.zone=z}}
       const st=a=>{a.sort((x,y)=>x-y);return {min:a[0],p05:a[(a.length*0.05)|0],med:a[a.length>>1]}};
