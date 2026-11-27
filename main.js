@@ -378,7 +378,7 @@
     for (const p of App.previews) {
       const c = p.c.getContext('2d'); c.clearRect(0, 0, 100, 38); const C = CHARS[p.ch], pts = [];
       for (let i = 0; i < 15; i++) pts.push({ x: 76 - i * 6, y: 21 + Math.sin(App.t * 5 - i * 0.55) * (i === 0 ? 1 : 2.5) });
-      R.drawWormPreview(c, { id: p.ch, ch: p.ch, variant: p.variant, x: pts[0].x, y: pts[0].y, ang: 0, aim: Math.sin(App.t * 1.5 + p.ch) * 0.5, pts, r: C.baseR, mass: C.startMass, alive: true, shield: 0, stuck: 0, slow: 0, boosting: false }, App.t);
+      R.drawWormPreview(c, { id: p.ch, ch: p.ch, variant: p.variant, x: pts[0].x, y: pts[0].y, ang: 0, aim: Math.sin(App.t * 1.5 + p.ch) * 0.5, pts, r: C.baseR, mass: C.startMass, alive: true, shield: 0, stuck: 0, slow: 0, boosting: false, noName: true }, App.t);
     }
   }
   const demoView = { x: 0, y: 0, w: 1, h: 1, cam: App.demoCam, trip: 0, slow: 0 };

@@ -52,27 +52,37 @@
     c.fillStyle = col; for (let i = 0; i < n; i++) { const a = phase + i * 6.283 / n; c.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r), sz, sz); }
   }
 
-  function segColor(ch, i, cols) {
-    switch (ch) {
-      case 0: return cols[(i >> 2) & 1];
-      case 1: return cols[i % 6 < 2 ? 1 : 0];
-      case 2: return cols[i % 5 === 2 ? 1 : 0];
-      case 3: return cols[(i >> 1) & 1];
-      default: return cols[(i * 7 + (i >> 2)) % 5 < 2 ? 1 : 0];
-    }
+  // which of 16 directions (0 = right, 4 = down, clockwise on screen) the vector points in; no atan2 needed
+  function dir16(dx, dy) {
+    const ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy, q = ay < ax * 0.1989 ? 0 : ay < ax * 0.6682 ? 1 : ay < ax * 1.4966 ? 2 : ay < ax * 5.0273 ? 3 : 4;
+    return dx >= 0 ? (dy >= 0 ? q : (16 - q) & 15) : dy >= 0 ? 8 - q : 8 + q;
   }
 
+  // The body is one drawImage per segment from the skin's pre-baked discs (sprites.js), picked by how far down
+  // the design the segment sits and which way the body runs there.
   function drawWorm(c, w, ox, oy, t, leader, isMe) {
-    const C = CHARS[w.ch], cols = C.colors[w.variant % 4], p = w.pts, r = w.r, n = p.length;
+    const C = CHARS[w.ch], sk = HW.skin(w.ch, w.variant), p = w.pts, r = w.r, n = p.length;
+    const S = HW.skinSet(sk, r), cells = S.cells, tail = sk.tail, e = r + 1;
     if (w.shield > 0 && ((t * 12) | 0) % 2) c.globalAlpha = 0.5;
-    for (let i = n - 1; i >= 0; i--) {
-      const ft = n - 1 - i; let rr = r; if (ft < 4) rr = Math.max(3, r - 4 + ft);
-      const s = HW.seg(i === 0 ? cols[0] : segColor(w.ch, i, cols), rr);
-      c.drawImage(s, Math.round(p[i].x - ox) - rr - 1, Math.round(p[i].y - oy) - rr - 1);
+    // a sheen slides down the body every few seconds; a boosting worm fires quick pulses of its own colour instead
+    const boost = w.boosting, gl = HW.glint(boost ? sk.glow : '#ffffff', r, boost), gp = boost ? 16 : 56, gw = 2, gph = gp - 1 - (((t * (boost ? 26 : 16) + w.id * 7) | 0) % gp);
+    let o = 0;
+    for (let i = n - 1; i > 0; i--) {
+      const q = p[i], x = Math.round(q.x - ox), y = Math.round(q.y - oy), ft = n - 1 - i;
+      if (ft < 4) {   // the tail tapers to a tip in its own colours
+        const rr = Math.max(3, r - 4 + ft);
+        c.drawImage(tail[rr * 4 + ft] || HW.skinTail(sk, rr, ft), x - rr - 1, y - rr - 1); continue;
+      }
+      const h = p[i - 1], dx = h.x - q.x, dy = h.y - q.y; if (dx !== 0 || dy !== 0) o = dir16(dx, dy);   // (a worm that has just spawned is still bunched up)
+      const k = i % r;
+      c.drawImage(cells[k * 16 + o] || HW.skinBake(S, k, o), x - e, y - e);
+      if ((i + gph) % gp < gw) c.drawImage(gl, x - e, y - e);
     }
+    o = dir16(Math.cos(w.ang), Math.sin(w.ang));
+    c.drawImage(cells[r * 16 + o] || HW.skinBake(S, r, o), Math.round(p[0].x - ox) - e, Math.round(p[0].y - oy) - e);
     // name written along the body, always reading left to right
     const name = C.name, L = name.length, st = 3;
-    if (n >= st + L) {
+    if (n >= st + L && !w.noName) {   // (the menu previews leave it off: the card says who it is, the worm shows its paint)
       const dxn = p[st + L - 1].x - p[st].x, dyn = p[st + L - 1].y - p[st].y;
       // sideways bodies read left to right; upright bodies read top to bottom on every 2nd segment so letters don't pile up
       if (w._vert === undefined) w._vert = Math.abs(dyn) > Math.abs(dxn); else if (Math.abs(dyn) > Math.abs(dxn) * 1.4) w._vert = true; else if (Math.abs(dxn) > Math.abs(dyn) * 1.4) w._vert = false;
@@ -84,7 +94,7 @@
     const hx = Math.round(w.x - ox), hy = Math.round(w.y - oy);
     const dx = Math.cos(w.ang), dy = Math.sin(w.ang), ax = Math.cos(w.aim), ay = Math.sin(w.aim);
     // arms + gun
-    const gx = hx + ax * (r + 5), gy = hy + ay * (r + 5), arm = HW.shade(cols[0], -0.3);
+    const gx = hx + ax * (r + 5), gy = hy + ay * (r + 5), arm = sk.arm;
     pxLine(c, hx - ay * (r - 1), hy + ax * (r - 1), gx, gy, arm, 2);
     pxLine(c, hx + ay * (r - 1), hy - ax * (r - 1), gx + ax * 4, gy + ay * 4, arm, 2);
     const g = HW.gunSpr[w.ch];
@@ -108,10 +118,10 @@
     else if (w.ch === 3) c.drawImage(((t * 8) | 0) % 2 ? HW.hatSpr.wes : HW.hatSpr.wes2, hx - 5, hy - r - 4);
     else if (w.ch === 2) {
       const bx = hx - dx * r * 0.35, by = hy - dy * r * 0.35;
-      pxLine(c, bx - dy * r, by + dx * r, bx + dy * r, by - dx * r, '#e03c32', 2);
+      pxLine(c, bx - dy * r, by + dx * r, bx + dy * r, by - dx * r, sk.band[0], 2);
       const wv = Math.sin(t * 9 + w.id) * 2;
-      pxLine(c, bx - dy * r, by + dx * r, bx - dy * r - dx * 6 + wv, by + dx * r - dy * 6, '#e03c32', 1);
-      pxLine(c, bx - dy * r, by + dx * r, bx - dy * r - dx * 5 - wv, by + dx * r - dy * 5 + 2, '#9c2020', 1);
+      pxLine(c, bx - dy * r, by + dx * r, bx - dy * r - dx * 6 + wv, by + dx * r - dy * 6, sk.band[0], 1);
+      pxLine(c, bx - dy * r, by + dx * r, bx - dy * r - dx * 5 - wv, by + dx * r - dy * 5 + 2, sk.band[1], 1);
     }
     if (leader) c.drawImage(HW.crownSpr, hx - 4, hy - r - 11 + Math.round(Math.sin(t * 4)));
     c.globalAlpha = 1;
