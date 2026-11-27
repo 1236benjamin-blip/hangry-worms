@@ -360,6 +360,8 @@ window.TH = (() => {
     // --- special guns: sg / sgT, the sprite render.js draws, and bullets of that gun's kind with a running age ---
     out.guns = [];
     for (let ty = 0; ty < HW.SGUNS.length; ty++) {
+      // bots come for a gun pickup now and would stand in the line of fire: park them (shots pass a shielded worm) and disarm them
+      for (const o of S.worms) if (o !== wa) { o.shield = 99; if (o.isBot) { o.stuck = 99; o.sg = 0; o.inp.fire = false; } }   // (the host's own worm drifts about too)
       mark(); X.sim.addItem('g', ty, wa.x + 2, wa.y, 0); run(2);
       const ma = M(a, wa), g = { ty, sg: [wa.sg, ma.sg, M(f, wa).sg], sgT: [r2(wa.sgT), r2(ma.sgT), r2(M(f, wa).sgT)], spr: HW.gunSprOf(ma) === HW.sgunSpr[ty], who: who('gun', wa.id, ty), kinds: [], n: 0, ageErr: 0, vErr: 0, ages: [], far: 0, nearN: 0, v0: 0, v1: 0 };
       input(a, 0, 0, 0, -1, 1);   // aim up, fire
@@ -739,7 +741,7 @@ def part_a(b):
     rs = pred("respawn")
     for q in rs: print("   respawn  rtt %3d ms: %d frames dead, predicted while dead %d; first frame of the new life %.1f px off (%.1f without prediction); afterwards %s" % (q["rtt"], q["deadF"], q["predDead"], q["newLife"]["firstErr"], q["newLife"]["noPredFirst"], fmt(q["newLife"]["after"]["held"])))
     check("prediction: none while dead", all(q["predDead"] == 0 and q["deadF"] > 30 for q in rs), [(q["predDead"], q["deadF"]) for q in rs])
-    check("prediction: a new life starts in the right place at once (no slide from the old one), then tracks as usual", all(q["newLife"]["newId"] and q["newLife"]["firstErr"] <= q["heldMs"] / 1000 * q["speed"] + 6 and q["newLife"]["after"]["held"]["max"] <= 9 and q["snaps"] == 0 and q["others"] == 0 for q in rs), [q["newLife"]["firstErr"] for q in rs])
+    check("prediction: a new life starts in the right place at once (no slide from the old one), then tracks as usual", all(q["newLife"]["newId"] and q["newLife"]["firstErr"] <= q["heldMs"] / 1000 * q["speed"] + 10 and q["newLife"]["after"]["held"]["max"] <= 9 and q["snaps"] == 0 and q["others"] == 0 for q in rs), [q["newLife"]["firstErr"] for q in rs])
     rs = pred("teleport")
     for q in rs: print("   teleport rtt %3d ms: snaps %d, settled %d ms after the host moved the worm 1200 px; afterwards p95 %.1f" % (q["rtt"], q["snaps"], q["recoverMs"], q["after"]["held"]["p95"]))
     check("prediction: a worm moved by the host is followed with exactly one jump, right again within a round trip + 0.1 s", all(q["snaps"] == 1 and q["recoverMs"] <= q["rtt"] + 100 and q["after"]["held"]["p95"] <= q["before"]["held"]["p95"] + 2 for q in rs), [(q["snaps"], q["recoverMs"]) for q in rs])

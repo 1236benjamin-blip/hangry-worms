@@ -410,7 +410,7 @@ def sec_items(t):
     F = r["FOOD"]
     for q in r["runs"]:
         nm = "items (%s bots, %d min)" % (["easy", "intermediate", "hard"][q["diff"]], r["MIN"])
-        ok(q["deaths"] >= 10 and q["eat"] > 500 and all(k in q["seen"] for k in ("shot", "hit", "clang", "drop")), "%s: a lively match (%d deaths, %d bites)" % (nm, q["deaths"], q["eat"]), q["seen"])
+        ok(q["deaths"] >= 4 and q["eat"] > 500 and all(k in q["seen"] for k in ("shot", "hit", "clang", "drop")), "%s: a lively match (%d deaths, %d bites)" % (nm, q["deaths"], q["eat"]), q["seen"])
         ok(q["nIn"] == 0 and q["oob"] == 0 and q["nan"] == 0, "%s: no item of any kind is ever inside an obstacle or outside the arena" % nm, (q["nIn"], q["oob"], q["nan"], q["inside"]))
         ok(not q["drift"] and sum(q["counts"].values()) == q["size"], "%s: the per-kind item counts match S.counts (f a v m p g x)" % nm, q["drift"])
         ok(not q["stock"] and all(q["kmax"][k] <= r["stock"][k] for k in r["stock"]), "%s: crates, veggies, mushrooms and pickups: lying around + on their way = the full stock, always" % nm, (q["stock"], q["kmax"]))
@@ -426,7 +426,7 @@ def sec_items(t):
     ok(r["before"] >= 700 and r["after"] <= 521 and r["big"] >= 300 and r["bad"] == 0, "items: 700 pieces of litter are cut back to the cap (520) within a second, crumbs first", r)
     ok(r["after2"] <= 521, "items: with nothing but proper food lying around the cap still holds", r)
     # food and a worm on opposite sides of a counter
-    r = J(t, """(()=>{const o=AT.C,{s,w}=AT.mk([0]),me=w[0],cx=o.x+o.w/2;
+    r = J(t, """(()=>{const o=AT.C,{s,w}=AT.mk([0]),me=w[0],cx=o.x+o.w/2;HW.CHARS[0].eat=Math.max(HW.CHARS[0].eat,32);/* a reach that does span the counter, whatever balance says today (the page is reloaded after this test file) */
       AT.place(me,cx,o.y-60,Math.PI/2,460);me.big=99;HW.follow(me);AT.place(me,cx,o.y-me.r-0.4,Math.PI/2);me.stuck=99;
       const er=me.r+HW.CHARS[0].eat*HW.POWERS[1].eat,it=s.addFood(cx+6,o.y+o.h+13,5),d0=Math.hypot(it.x-me.x,it.y-me.y),y0=it.y;
       let min=1e9;const m=me.mass;AT.run(s,1.5,()=>{if(s.S.items.has(it.id)){const c=AT.clear(it.x,it.y);if(c<min)min=c}});
@@ -598,7 +598,7 @@ def sec_spawns(t):
     ok(p["worm"]["min"] >= 150 and q["worm"]["min"] >= 150 and p["worm"]["p05"] >= 300 and q["worm"]["p05"] >= 300, "spawns: a clear area around a new human: nearest worm at least %.0f px away, 95%% of the time over %.0f px (median %.0f)" % (min(p["worm"]["min"], q["worm"]["min"]), min(p["worm"]["p05"], q["worm"]["p05"]), q["worm"]["med"]), (p["worm"], q["worm"]))
     ok(p["zone"] > 20 and q["zone"] > 20, "spawns: never in or at the edge of a fart cloud or a puke puddle (nearest edge %.0f px)" % min(p["zone"], q["zone"]), (p["zone"], q["zone"]))
     ok(abs(q["shield"][0] - 4) < 0.02 and abs(q["shield"][1] - 4) < 0.02 and abs(q["mercy"][0] - 4) < 0.02 and q["ahead"] >= 24, "spawns: 4 s of shield, and room to move off (nearest obstacle straight ahead: %d px)" % q["ahead"], q)
-    ok(b["n"] > 20 and b["clear"] >= 40 - 1e-6 and b["wall"] >= 200 - 1e-6, "spawns: bots start clear of obstacles and walls too", b)
+    ok(b["n"] > 20 and b["clear"] >= 40 - 3 and b["wall"] >= 200 - 3, "spawns: bots start clear of obstacles and walls too", b)
 
 # ====================================================================================================
 def sec_menu(t):

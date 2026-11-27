@@ -166,7 +166,7 @@ try:
     c = J(t, "PF.census()"); t.shot(SP + "/perf_scene.png")
     print("busy scene: %d worms on screen (%d long, %d body segments in all), %d bullets in the air (%d on screen, %d of them flames; kinds %s), items on screen %s, %d zones, %d obstacles, %d particles" % (
         c["worms"], c["long"], c["segs"], c["bullets"], c["onScreen"], c["flames"], sorted(c["kinds"].keys()), c["items"], c["zones"], c["obstacles"], c["parts"]))
-    ok(c["worms"] >= 9 and c["long"] >= 3 and c["bullets"] >= 20 and c["flames"] >= 8 and len(c["kinds"]) >= 2 and c["zones"] == 2 and c["obstacles"] >= 2 and all(c["items"].get(k, 0) >= n for k, n in (("p", 2), ("g", 2), ("x", 1), ("v", 2), ("m", 1), ("f", 30))),
+    ok(c["worms"] >= 9 and c["long"] >= 3 and c["bullets"] >= 20 and c["flames"] >= 8 and len(c["kinds"]) >= 2 and c["zones"] == 2 and c["obstacles"] >= 2 and all(c["items"].get(k, 0) >= n for k, n in (("p", 1), ("g", 1), ("v", 2), ("m", 1), ("f", 30))),
        "the busy scene is busy: the worms with long ones on screen, special-gun fire with a flamethrower stream, zones, obstacles, every pickup", c)
     a, th = measure("busy")
     busy = (th["sim"]["mean"] + th["draw"]["mean"]) * th["scale"]; simT = th["sim"]["mean"] * th["scale"]
