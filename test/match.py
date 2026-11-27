@@ -3,7 +3,7 @@
   HW_URL=http://127.0.0.1:8377/index.html HW_PORT=9415 python3 test/match.py <scratch dir>
 The online part runs twice: over a loopback connection inside one page (always), and between two tabs through the real
 PeerJS cloud. If the cloud cannot be reached from this machine the second one is SKIPPED with a message (set
-HW_REQUIRE_ONLINE=1 to make that a failure instead)."""
+HW_REQUIRE_ONLINE=1 to make that a failure instead). HW_INJECT=a.js,b.js evaluates those files before the loopback part."""
 import sys, os, json
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
@@ -124,6 +124,7 @@ try:
     t.eval("HW.App.quit()"); t.pump(0.3)
 
     # ---------- online, loopback: host sim -> real snapshots -> client mirror, all in this page ----------
+    for f in [f for f in os.environ.get("HW_INJECT", "").split(",") if f]: t.eval(open(f).read() + "\n;0"); print("injected " + f)   # A/B: try a patched net.js / sim.js
     t.eval(LOOP + ";0")
     r = J(t, """(()=>{const X=window.MX=MT.setup(2,2),S=X.sim.S,G=X.G,me=MT.mine(X);
       return {ver:X.ver,pid:X.pid,d:X.init&&X.init.d,first:X.first,comps:G.comps.length,bots:S.comps.filter(c=>c.pid<0).length,lives:me&&me.lives,gt:G.match.t,ht:S.match.t,n:G.match.n,over:G.match.over,

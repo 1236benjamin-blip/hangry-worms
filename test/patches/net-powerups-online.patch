@@ -1,0 +1,94 @@
+--- a/net.js
++++ b/net.js
+@@ -171,11 +171,11 @@
+   const itemRow = it => [it.id, it.k, it.type, Math.round(it.x), Math.round(it.y), it.v];
+   const tenths = v => Math.ceil(Math.max(0, v) * 10);
+   const flags = w => (w.boosting ? 1 : 0) | (w.isBot ? 2 : 0);
+-  const fullRow = w => [w.id, w.ch, w.variant, r1(w.x), r1(w.y), Math.round(w.ang * 100), Math.round(w.aim * 100), Math.round(w.mass * 10), flags(w), w.ammo, tenths(w.abil), tenths(w.stuck), tenths(w.slow), tenths(w.trip), w.kills, w.pid, tenths(w.shield)];
+-  const TIMERS = ['abil', 'stuck', 'slow', 'trip', 'shield'];
++  const fullRow = w => [w.id, w.ch, w.variant, r1(w.x), r1(w.y), Math.round(w.ang * 100), Math.round(w.aim * 100), Math.round(w.mass * 10), flags(w), w.ammo, tenths(w.abil), tenths(w.stuck), tenths(w.slow), tenths(w.trip), w.kills, w.pid, tenths(w.shield), tenths(w.rage), tenths(w.big), tenths(w.guard), tenths(w.sauce), tenths(w.chill), w.sg | 0, tenths(w.sgT)];
++  const TIMERS = ['abil', 'stuck', 'slow', 'trip', 'shield', 'rage', 'big', 'guard', 'sauce', 'chill', 'sgT'];
+   // has anything changed that a client cannot work out for itself (timers just count down)?
+   function stale(o, w, t) {
+-    if (o.ammo !== w.ammo || o.kills !== w.kills || o.variant !== w.variant) return true;
++    if (o.ammo !== w.ammo || o.kills !== w.kills || o.variant !== w.variant || o.sg !== w.sg) return true;
+     for (const k of TIMERS) if (Math.abs(Math.max(0, o[k] - (t - o.t)) - Math.max(0, w[k])) > 0.12) return true;
+     return false;
+   }
+@@ -212,7 +212,7 @@
+     }
+     c.bk = bk; if (b) m.b = b;
+     if (full || ctx.zNew) m.z = S.zones.map(z => [z.id, z.k, Math.round(z.x), Math.round(z.y), z.r, r1(z.t), z.owner]);
+-    if (full || ctx.pNew) m.c = [Math.ceil(S.match.t), S.match.over ? 1 : 0, S.match.n, S.match.reason || '', r1(Math.max(0, (S.autoNext || 0) - S.match.overT)), S.comps.map(c => [c.cid, c.pid, c.ch, c.variant, c.kills, c.score, c.lives, c.out ? 1 : 0])];
++    if (full || ctx.pNew) m.c = [Math.ceil(S.match.t), S.match.over ? 1 : 0, S.match.n, S.match.reason || '', r1(Math.max(0, (S.autoNext || 0) - S.match.overT)), S.comps.map(c => [c.cid, c.pid, c.ch, c.variant, c.kills, c.score, c.lives, c.out ? 1 : 0]), S.match.awards || [], S.match.frenzy ? 1 : 0];
+     if (full || ctx.pNew) m.p = S.players.map(p => [p.pid, p.worm && p.worm.alive ? p.worm.id : 0, r1(p.deadT), p.lastKiller || '', p.lastCause || '', p.lastScore || 0, Math.round(p.best || 0), p.everSpawned ? 1 : 0]);
+     if (!all) {
+       // effects: deaths always (kill feed); eating / empty-gun clicks only for the worm they belong to; the rest only if nearby
+@@ -271,7 +271,7 @@
+       for (const w of S.worms) {
+         if (!w.alive) continue;
+         const o = Net.wst.get(w.id), full = !o || (N + w.id) % 40 === 0 || stale(o, w, S.t);
+-        wst.set(w.id, full ? { t: S.t, ammo: w.ammo, kills: w.kills, variant: w.variant, abil: w.abil, stuck: w.stuck, slow: w.slow, trip: w.trip, shield: w.shield } : o);
++        wst.set(w.id, full ? { t: S.t, ammo: w.ammo, kills: w.kills, variant: w.variant, abil: w.abil, stuck: w.stuck, slow: w.slow, trip: w.trip, shield: w.shield, rage: w.rage, big: w.big, guard: w.guard, sauce: w.sauce, chill: w.chill, sg: w.sg, sgT: w.sgT } : o);
+         ctx.live.push({ w, full, F: null, n: null, f: null });
+       }
+       Net.wst = wst;
+@@ -359,7 +359,7 @@
+   Net.newMirror = function () { return { t: 0, worms: [], items: new Map(), bullets: [], zones: [], players: [], comps: [], match: { t: CFG.MATCH_T, over: false, n: 0, reason: '', next: 0 }, wmap: new Map(), bmap: new Map(), pre: null, snapN: 0, gap: 0.055, late: 0.005, delay: 0.07 }; };
+   const arr = v => Array.isArray(v) ? v : [];
+   function norm(m) { m.w = arr(m.w); m.b = arr(m.b); m.a = arr(m.a); m.r = arr(m.r); m.e = arr(m.e); if (!Array.isArray(m.z)) delete m.z; if (!Array.isArray(m.p)) delete m.p; return m; }
+-  const KINDS = { f: () => HW.foodSpr, a: () => null, v: () => HW.vegSpr, m: () => HW.shroomSpr };
++  const KINDS = { f: () => HW.foodSpr, a: () => null, v: () => HW.vegSpr, m: () => HW.shroomSpr, p: () => HW.powerSpr, g: () => HW.sgunSpr, x: () => null };
+   function addItem(G, r) {
+     if (!Array.isArray(r) || !KINDS[r[1]] || (G.items.size >= 20000 && !G.items.has(r[0]))) return;
+     const spr = KINDS[r[1]](), n = spr && spr.length ? spr.length : 1;
+@@ -385,7 +385,7 @@
+     if (!w && !full) return; // never seen in full; its full row is on the way
+     const x = clamp(num(r[o]), 0, CFG.W), y = clamp(num(r[o + 1]), 0, CFG.H), ang = num(r[o + 2]) / 100, aim = num(r[o + 3]) / 100, mass = clamp(num(r[o + 4]) / 10, 1, 1e6), fl = r[o + 5] | 0;
+     if (!w) {
+-      w = { id: r[0], ch: clamp(r[1] | 0, 0, CHARS.length - 1), variant: 0, x, y, ang, aim, mass, pts: [], q: [], alive: true, inp: {}, abil: 0, stuck: 0, slow: 0, trip: 0, shield: 0, ammo: 0, kills: 0, pid: -1 };
++      w = { id: r[0], ch: clamp(r[1] | 0, 0, CHARS.length - 1), variant: 0, x, y, ang, aim, mass, pts: [], q: [], alive: true, inp: {}, abil: 0, stuck: 0, slow: 0, trip: 0, shield: 0, ammo: 0, kills: 0, pid: -1, rage: 0, big: 0, guard: 0, sauce: 0, chill: 0, sg: 0, sgT: 0 };
+       const pre = G.pre && G.pre[w.id];
+       if (pre && pre.length >= 4) {
+         // rebuild the body from the every-3rd-point data sent at join time
+@@ -397,6 +397,8 @@
+     if (full) {
+       w.variant = clamp(r[2] | 0, 0, 3); w.ammo = num(r[9]); w.kills = num(r[14]); w.pid = r[15] | 0; w.isBot = !!(fl & 2);
+       w.abil = tm(w.abil, num(r[10]) / 10); w.stuck = tm(w.stuck, num(r[11]) / 10); w.slow = tm(w.slow, num(r[12]) / 10); w.trip = tm(w.trip, num(r[13]) / 10); w.shield = tm(w.shield, num(r[16]) / 10);
++      w.rage = tm(w.rage, num(r[17]) / 10); w.big = tm(w.big, num(r[18]) / 10); w.guard = tm(w.guard, num(r[19]) / 10); w.sauce = tm(w.sauce, num(r[20]) / 10); w.chill = tm(w.chill, num(r[21]) / 10);
++      w.sg = clamp(r[22] | 0, 0, HW.SGUNS.length); w.sgT = tm(w.sgT, num(r[23]) / 10);
+     }
+     w.mass = mass; w.boosting = !!(fl & 1); w.seen = G.snapN;
+     const q = w.q, l = q[q.length - 1], s = { t: T, x, y, a: ang, m: aim };
+@@ -414,7 +416,7 @@
+       if (typeof r === 'number') { const b = G.bmap.get(r); if (b) b.seen = N; continue; }
+       if (!Array.isArray(r)) continue;
+       const vx = num(r[4]), vy = num(r[5]), x = num(r[2]) + vx * late, y = num(r[3]) + vy * late; let b = G.bmap.get(r[0]);
+-      if (!b) { b = { id: r[0], ch: clamp(r[1] | 0, 0, CHARS.length - 1), x, y, vx, vy, c: clamp(r[6] | 0, 0, 4) }; G.bmap.set(b.id, b); G.bullets.push(b); }
++      if (!b) { b = { id: r[0], age: 0, ch: clamp(r[1] | 0, 0, HW.GUNS.length - 1), x, y, vx, vy, c: clamp(r[6] | 0, 0, 4) }; G.bmap.set(b.id, b); G.bullets.push(b); }
+       else { const dx = x - b.x, dy = y - b.y; if (dx * dx + dy * dy > 900) { b.x = x; b.y = y; } else { b.x += dx * 0.25; b.y += dy * 0.25; } b.vx = vx; b.vy = vy; }
+       b.seen = N;
+     }
+@@ -426,7 +428,8 @@
+     for (const r of m.a) addItem(G, r);
+     for (const id of m.r) G.items.delete(id);
+     if (Array.isArray(m.c) && Array.isArray(m.c[5])) {
+-      G.match = { t: num(m.c[0]), over: !!m.c[1], n: m.c[2] | 0, reason: String(m.c[3] || ''), next: num(m.c[4]) };
++      G.match = { t: num(m.c[0]), over: !!m.c[1], n: m.c[2] | 0, reason: String(m.c[3] || ''), next: num(m.c[4]), frenzy: !!m.c[7],
++        awards: (Array.isArray(m.c[6]) ? m.c[6] : []).filter(Array.isArray).slice(0, 4).map(a => [a[0] | 0, String(a[1] || '').replace(/[^A-Z0-9 :.,!?%()+-]/g, '').slice(0, 60), typeof a[2] === 'number' ? a[2] : String(a[2] || '').replace(/[^A-Z0-9 %.]/g, '').slice(0, 8)]) };
+       G.comps = m.c[5].filter(Array.isArray).slice(0, 16).map(r => ({ cid: r[0] | 0, pid: r[1] | 0, ch: clamp(r[2] | 0, 0, CHARS.length - 1), variant: clamp(r[3] | 0, 0, 3), kills: num(r[4]), score: num(r[5]), lives: num(r[6]), out: !!r[7] }));
+     }
+     if (m.p) G.players = m.p.filter(Array.isArray).map(r => ({ pid: r[0] | 0, wormId: r[1], deadT: num(r[2]), lastKiller: String(r[3] || ''), lastCause: String(r[4] || ''), lastScore: num(r[5]), best: num(r[6]), everSpawned: !!r[7] }));
+@@ -458,10 +461,11 @@
+         w.ang = a.a + angDiff(b.a, a.a) * ka; if (!w.localAim) w.aim = a.m + angDiff(b.m, a.m) * ka;
+       }
+       if (w.abil > 0) w.abil -= dt; if (w.stuck > 0) w.stuck -= dt; if (w.slow > 0) w.slow -= dt; if (w.trip > 0) w.trip -= dt; if (w.shield > 0) w.shield -= dt;
++      if (w.rage > 0) w.rage -= dt; if (w.big > 0) w.big -= dt; if (w.guard > 0) w.guard -= dt; if (w.sauce > 0) w.sauce -= dt; if (w.chill > 0) w.chill -= dt; if (w.sgT > 0) w.sgT -= dt;
+       HW.follow(w);
+     }
+     for (const b of G.bullets) {
+-      const bg = CHARS[b.ch].gun; if (bg.blast) { const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy); if (v > 1) { const nv = Math.min(bg.vmax, v + bg.accel * rdt); b.vx *= nv / v; b.vy *= nv / v; } } // rockets speed up, as in sim.js
++      const bg = HW.GUNS[b.ch]; b.age += rdt; if (bg.accel) { const v = Math.sqrt(b.vx * b.vx + b.vy * b.vy); if (v > 1) { const nv = Math.min(bg.vmax, v + bg.accel * rdt); b.vx *= nv / v; b.vy *= nv / v; } } // rockets speed up, as in sim.js
+       b.x += b.vx * rdt; b.y += b.vy * rdt;
+     }
+     for (const z of G.zones) z.t -= dt;

@@ -1,7 +1,8 @@
 """The arena: map geometry, obstacles against worms and shots, items, food and hazards, bot difficulty, the BOTS menu, spawns.
 Rules are checked on private HW.Sim instances inside the page (no rendering, exact and fast); the menu part taps the real page.
   HW_URL=http://127.0.0.1:8377/index.html HW_PORT=9415 python3 test/arena.py <scratch dir> [section ...]
-Sections: map worms shots items food diff menu spawns (default: all). HW_VERBOSE=1 prints the measurements behind every check."""
+Sections: map worms shots items food diff menu spawns (default: all). HW_VERBOSE=1 prints the measurements behind every check.
+HW_INJECT=a.js,b.js evaluates those files in the page first (A/B: try a patched sim.js or bots.js without touching the real one)."""
 import sys, os, json
 sys.path.insert(0, os.path.dirname(__file__))
 from cdp import Browser
@@ -101,6 +102,13 @@ window.AT = (() => {
 })();
 """
 J = lambda t, js, timeout=120: json.loads(t.eval("JSON.stringify(%s)" % js, timeout=timeout))
+INJECT = [f for f in os.environ.get("HW_INJECT", "").split(",") if f]
+def boot(t):
+    """(re)load the page, swap in any injected scripts, install the harness"""
+    t.goto(URL, 1.2)
+    for f in INJECT: t.eval(open(f).read() + "\n;0")
+    if INJECT: t.eval("HW.App.quit()"); t.pump(0.3)   # the demo behind the menu restarts on the injected code
+    t.eval(HARNESS + ";0")
 
 # ====================================================================================================
 def sec_map(t):
@@ -374,7 +382,7 @@ def sec_items(t):
     """Items after minutes of bot play: nothing inside an obstacle, counts add up, food settles, the litter cap holds."""
     r = J(t, """(()=>{const C=HW.CFG,P=HW.PCFG,out=[],MIN=5;
       for(const diff of [0,2]){const s=new HW.Sim({diff}),S=s.S,p=s.addPlayer(1);p.inp=AT.INP();p.comp.lives=1e9;
-        const R={diff,inside:[],nIn:0,oob:0,nan:0,drift:[],stock:[],fsum:0,fn:0,fmax:0,deaths:0,kmax:{a:0,v:0,m:0,p:0,g:0,x:0},head:-1e9,causes:{},eat:0,seen:{}};
+        const R={diff,inside:[],nIn:0,oob:0,nan:0,drift:[],stock:[],fsum:0,fn:0,fmax:0,deaths:0,kmax:{a:0,v:0,m:0,p:0,g:0,x:0},head:0,blip:0,causes:{},eat:0,seen:{}},over=new Map();
         for(let i=0;i<3600*MIN;i++){S.match.t=200;
           // the human is a passenger: it swims in slow circles and comes back when it dies
           if(!p.worm||!p.worm.alive){if(p.deadT>3)p.wantSpawn=true}else{const a=S.t*0.5;p.inp.mx=Math.cos(a);p.inp.my=Math.sin(a)}
@@ -385,7 +393,10 @@ def sec_items(t):
             for(const it of S.items.values()){if(!(isFinite(it.x)&&isFinite(it.y)&&isFinite(it.v))){R.nan++;continue}
               if(it.x<0||it.y<0||it.x>C.W||it.y>C.H)R.oob++;
               const c=AT.clear(it.x,it.y);if(c<=0){R.nIn++;if(R.inside.length<6)R.inside.push([it.k,it.v,Math.round(it.x),Math.round(it.y),+c.toFixed(1),AT.nearest(it.x,it.y).k,(i/60)|0])}}
-            for(const w of S.worms){const q=w.r-AT.clear(w.x,w.y);if(q>R.head)R.head=q}}
+          }
+          // heads against obstacles, every step. A worm that grew this very step (a bite, the supersize fries) is moved out on
+          // its next step, so one frame of overlap by the growth is fine; an overlap that is still there a step later is not.
+          for(const w of S.worms){const q=w.r-AT.clear(w.x,w.y),was=over.get(w.id)||0;if(q>0.01&&was>0.01&&Math.min(q,was)>R.head)R.head=Math.min(q,was);if(q>R.blip)R.blip=q;over.set(w.id,q)}
           if(i%60===0){const cn={f:0,a:0,v:0,m:0,p:0,g:0,x:0};for(const it of S.items.values())cn[it.k]=(cn[it.k]||0)+1;
             for(const k in cn)if(cn[k]!==S.counts[k]&&R.drift.length<5)R.drift.push([k,cn[k],S.counts[k],i]);
             if(Object.keys(cn).sort().join('')!=='afgmpvx'||Object.keys(S.counts).sort().join('')!=='afgmpvx')R.drift.push(['kinds',Object.keys(cn).join(''),Object.keys(S.counts).join('')]);
@@ -404,7 +415,7 @@ def sec_items(t):
         ok(not q["drift"] and sum(q["counts"].values()) == q["size"], "%s: the per-kind item counts match S.counts (f a v m p g x)" % nm, q["drift"])
         ok(not q["stock"] and all(q["kmax"][k] <= r["stock"][k] for k in r["stock"]), "%s: crates, veggies, mushrooms and pickups: lying around + on their way = the full stock, always" % nm, (q["stock"], q["kmax"]))
         ok(F * 0.9 <= q["fmean"] <= F * 1.5 and q["fmax"] <= 520 + 100, "%s: food settles near CFG.FOOD (%d): mean %.0f, most ever %d, under the litter cap" % (nm, F, q["fmean"], q["fmax"]), q)
-        ok(q["head"] < 0.01, "%s: no worm's head is ever inside an obstacle (bots and deaths included)" % nm, q["head"])
+        ok(q["head"] < 0.01 and q["blip"] < 8, "%s: no worm's head stays inside an obstacle, bots, bumps and deaths included (checked every step)" % nm, (q["head"], q["blip"]))
         ok(all(c in ("shot", "crash", "bonk", "fart", "puke", "rampage", "left") for c in q["causes"]) and q["causes"].get("left", 0) <= 1, "%s: every death has a real cause (shot, crash, bonk, fart, puke, rampage), none is an obstacle" % nm, q["causes"])
     # the litter cap itself, and what it throws away first
     r = J(t, """(()=>{const {s}=AT.mk([1]),S=s.S,sp=AT.spot,rnd=AT.rng(5);const far=()=>[200+rnd()*400,1700+rnd()*500];
@@ -595,7 +606,7 @@ def sec_menu(t):
     LS = lambda k: t.eval("localStorage.getItem('%s')" % k)
     # every label on the menus is a little canvas of pixel text: remember what was written on each
     WRAP = "(()=>{if(HW.text.__w)return;const o=HW.text;HW.text=function(c,str){try{if(c&&c.canvas)c.canvas.dataset.s=String(str)}catch(e){}return o.apply(this,arguments)};HW.text.__w=1})()"
-    def load(): t.goto(URL, 1.2); t.eval(HARNESS + ";0"); t.eval(WRAP); t.eval("HW.App.show(HW.App.screen)"); t.pump(0.2)
+    def load(): boot(t); t.eval(WRAP); t.eval("HW.App.show(HW.App.screen)"); t.pump(0.2)
     labels = lambda: J(t, "[...document.querySelectorAll('#ui canvas')].map(c=>c.dataset.s||'')")
     def tap(label, exact=True):
         js = "[...document.querySelectorAll('#ui button')].find(b=>[...b.querySelectorAll('canvas')].some(c=>(c.dataset.s||'')%s))" % ("==='%s'" % label if exact else ".indexOf('%s')===0" % label)
@@ -662,7 +673,8 @@ SECTIONS = [("map", sec_map), ("worms", sec_worms), ("shots", sec_shots), ("item
 if __name__ == "__main__":
     b = Browser(profile=SP + "/prof")
     try:
-        t = b.tab(); t.device(844, 390, 3, True, True); t.goto(URL, 1.2); t.eval(HARNESS + ";0")
+        t = b.tab(); t.device(844, 390, 3, True, True); boot(t)
+        if INJECT: print("injected: " + ", ".join(INJECT))
         for name, fn in SECTIONS:
             if not want(name): continue
             print("--- " + name)

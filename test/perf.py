@@ -70,7 +70,7 @@ window.PF = (() => {
   }
   // what is on the player's screen right now
   function census() {
-    const S = A.sim.S, v = A.locals[0].view, x0 = v.cam.x - R.W / 2, y0 = v.cam.y - R.H / 2, inV = (x, y) => x >= x0 && x <= x0 + R.W && y >= y0 && y <= y0 + R.H;
+    alive(); const S = A.sim.S, v = A.locals[0].view, x0 = v.cam.x - R.W / 2, y0 = v.cam.y - R.H / 2, inV = (x, y) => x >= x0 && x <= x0 + R.W && y >= y0 && y <= y0 + R.H;
     const kinds = {}; for (const b of S.bullets) if (inV(b.x, b.y)) kinds[b.ch] = (kinds[b.ch] || 0) + 1;
     const it = {}; for (const i of S.items.values()) if (inV(i.x, i.y)) it[i.k] = (it[i.k] || 0) + 1;
     return { canvas: R.W + 'x' + R.H, worms: S.worms.filter(w => inV(w.x, w.y)).length, long: S.worms.filter(w => inV(w.x, w.y) && w.pts.length > 100).length, segs: S.worms.reduce((a, w) => a + w.pts.length, 0),
@@ -80,7 +80,7 @@ window.PF = (() => {
   function calib() { let best = 1e9; for (let k = 0; k < 7; k++) { const t0 = performance.now(); let x = 0; for (let i = 0; i < 2e6; i++) x += Math.sqrt(i ^ k); best = Math.min(best, performance.now() - t0); } return best; }
   // where a busy frame goes: draw the same frame with one thing taken away at a time
   function parts(frames) {
-    const S = A.sim.S, l = A.locals[0], v = l.view, me = l.me, fx = HW.fx;
+    const S = A.sim.S, l = A.locals[0], v = l.view, me = alive(), fx = HW.fx;
     const tm = f => { const t0 = performance.now(); for (let i = 0; i < frames; i++) { f(100 + i / 60); R.ctx.getImageData(i % R.W, 0, 1, 1); } return (performance.now() - t0) / frames; };
     const view = () => tm(t => R.drawView(v, S, t)), o = {}; v.trip = 0; v.slow = 0; v.meId = me.id;
     while (fx.parts.length < 260) fx.burst(CX - 250 + Math.random() * 500, CY - 120 + Math.random() * 240, ['#fff'], 20, 0, 9, 2);
@@ -96,12 +96,15 @@ window.PF = (() => {
     for (const w of W) S.worms.push(w); for (const [k, it] of I) S.items.set(k, it); for (const z of Z) S.zones.push(z); for (const b of B) S.bullets.push(b); for (const p of P) fx.parts.push(p); for (const x of T) fx.texts.push(x);
     for (const k in o) o[k] = Math.round(o[k] * 100) / 100; return o;
   }
-  function sim(steps) { const s = A.sim, S = s.S, a = []; let bul = 0; for (let i = 0; i < steps; i++) { const t0 = performance.now(); s.step(1 / 60); a.push(performance.now() - t0); S.events = []; S.adds.length = 0; S.rems.length = 0; bul += S.bullets.length; } const r = stat(a); r.bullets = bul / steps; return r; }
+  // the player's worm, alive (in the typical scene the bots may well have killed it)
+  function alive() { const s = A.sim, l = A.locals[0], P = l.player; P.comp.lives = 99; for (let i = 0; i < 600 && !(P.worm && P.worm.alive); i++) { P.wantSpawn = true; s.step(1 / 60); s.S.events = []; s.S.adds.length = 0; s.S.rems.length = 0; } l.me = P.worm; return P.worm; }
+  function sim(steps) { alive(); const s = A.sim, S = s.S, a = []; let bul = 0; for (let i = 0; i < steps; i++) { const t0 = performance.now(); s.step(1 / 60); a.push(performance.now() - t0); S.events = []; S.adds.length = 0; S.rems.length = 0; bul += S.bullets.length; } const r = stat(a); r.bullets = bul / steps; return r; }
   // one frame as main.js draws it: world, screen effects, HUD, touch controls. Every frame is flushed to pixels
   // (getImageData) so the cost of actually painting it is in the number, not put off until later.
   function draw(frames) {
-    const s = A.sim, S = s.S, l = A.locals[0], v = l.view, me = l.me, a = [], cols = ['#fff', '#ffd23f', '#f08a1c', '#e03c32'];
+    const s = A.sim, S = s.S, l = A.locals[0], v = l.view, a = [], cols = ['#fff', '#ffd23f', '#f08a1c', '#e03c32'];
     for (let i = 0; i < frames; i++) {
+      const me = alive();
       if (i % 2 === 0) { s.step(1 / 60); S.events = []; S.adds.length = 0; S.rems.length = 0; }      // keep the scene moving (not timed)
       if (on) { while (HW.fx.parts.length < 260) HW.fx.burst(CX - 250 + Math.random() * 500, CY - 120 + Math.random() * 240, cols, 20, 120, 0.6, 2);
         if (HW.fx.texts.length < 6) HW.fx.text(CX - 100 + Math.random() * 200, CY, '-12', '#ff5a4d'); }
