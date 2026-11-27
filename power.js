@@ -11,8 +11,17 @@
     { id: 'rampage', name: 'RAMPAGE', t: 9, speed: 1.4, col: '#ffd23f' },
     { id: 'super', name: 'SUPERSIZE', t: 12, scale: 1.5, mass: 20, armor: 0.5, eat: 1.8, col: '#ff5a4d' },
     // guard: a bubble that stops every shot and blast for its duration. Running into worms, farts and puke still get you.
-    { id: 'guard', name: 'SHOT SHIELD', t: 10, col: '#4cc9f0' }
+    { id: 'guard', name: 'SHOT SHIELD', t: 10, col: '#4cc9f0' },
+    // sauce: boosting costs no mass, is a bit quicker and leaves a trail of fire
+    { id: 'sauce', name: 'HOT SAUCE', t: 8, boost: 1.15, col: '#ff7a1c' }
   ];
+  // the golden burger: one on the map at a time, worth a feast and a half, shown on every minimap (item kind 'x')
+  HW.GOLD = { v: 30, wait: [35, 55] };
+  // kill streaks: [kills in a row without dying, callout, bonus points]
+  HW.STREAKS = [[2, 'DOUBLE KILL', 10], [3, 'FOOD COMA', 20], [5, 'ALL YOU CAN EAT', 40], [7, 'UNSTOPPABLE GLUTTON', 60]];
+  // last minute of a match: pickups and food turn up this much faster. The crowned leader is always worth this many times the kill points.
+  HW.FRENZY = { t: 60, rate: 2 }; HW.BOUNTY = 2;
+  HW.TAUNTS = ['NOM NOM', 'BURP', 'EAT MY DUST', 'BEN SUCKS', 'TOO SLOW', 'YUM', 'HANGRY!', 'GET IN MY BELLY', 'IS THAT ALL?', 'SALAD BREATH'];
   // how many lie around at once and how long a new one takes to turn up after a pick-up (seconds, min..max)
   HW.PCFG = { POWERS: 3, GUNS: 3, POWER_WAIT: [18, 30], GUN_WAIT: [12, 22], CHILL_MULT: 0.4 };
 
@@ -78,7 +87,24 @@
     '...kcCCCck...',
     '....kcCck....',
     '.....kkk.....']);
-  HW.powerSpr = [HW.pizzaSpr, HW.superSpr, HW.guardSpr];
+  // hot sauce bottle
+  HW.sauceSpr = sprite([
+    '...kkk...',
+    '...kgk...',
+    '...kgk...',
+    '..kkkkk..',
+    '..krrrk..',
+    '.krrrrrk.',
+    '.krwwwrk.',
+    '.krwywrk.',
+    '.krwowrk.',
+    '.krwwwrk.',
+    '.krrrrrk.',
+    '.kRRRRRk.',
+    '..kkkkk..']);
+  HW.powerSpr = [HW.pizzaSpr, HW.superSpr, HW.guardSpr, HW.sauceSpr];
+  // golden burger: the ordinary burger recast in gold
+  HW.goldSpr = sprite(HW.FOOD[0].s, { o: '#ffd23f', O: '#c9960a', e: '#fffbe0', g: '#ffe98a', l: '#ffffff', y: '#fff1a0', b: '#b8860b', k: '#3a2a00' });
 
   // special guns as held by a worm, pointing right: c sprite, px/py grip point, len = grip to muzzle (same shape as HW.gunSpr)
   HW.sgunSpr = [
