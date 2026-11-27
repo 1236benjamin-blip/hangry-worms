@@ -528,7 +528,7 @@
     c.restore();
   };
 
-  // touch controls overlay (full screen)
+  // touch controls overlay of one touch pad (HW.Input.tpads[i]): the whole screen in solo, one half each in split screen
   // C: the player's character (so the ability button shows while they are dead too)
   R.drawTouch = function (T, me, t, C) {
     const c = cx, L = T.layout; if (!L) return;
@@ -545,17 +545,19 @@
     let b = L.boost; c.globalAlpha = T.boost ? 0.85 : 0.4; c.drawImage(disc('#ffd23f', b.r), b.x - b.r, b.y - b.r); c.drawImage(disc('#1a1423', b.r - 2), b.x - b.r + 2, b.y - b.r + 2);
     c.globalAlpha = 1; text(c, 'BOOST', b.x, b.y - 3, T.boost ? '#fff' : '#ffd23f', { align: 0.5, shadow: false });
     // ability
-    if (me && CHARS[me.ch].ability) {
-      b = L.abil; const f = me.alive ? 1 - Math.max(0, me.abil) / CFG.ABIL_CD : 0, ready = f >= 1, col = CHARS[me.ch].ability === 'fart' ? '#7ed321' : '#c9c13a';
+    const A = (C || (me ? CHARS[me.ch] : {})).ability, live = me && me.alive;
+    if (A) {
+      b = L.abil; const f = live ? 1 - Math.max(0, me.abil) / CFG.ABIL_CD : 0, ready = f >= 1, col = A === 'fart' ? '#7ed321' : '#c9c13a';
       c.globalAlpha = ready ? 0.9 : 0.45; c.drawImage(disc(T.abilHeld || (ready && ((t * 3) | 0) % 2) ? '#fff' : col, b.r), b.x - b.r, b.y - b.r); c.drawImage(disc('#1a1423', b.r - 2), b.x - b.r + 2, b.y - b.r + 2);
       // fill from the bottom as it recharges
       const d = disc(col, b.r - 3), hh = Math.round(d.height * f); c.globalAlpha = ready ? 0.9 : 0.5;
       if (hh > 0) c.drawImage(d, 0, d.height - hh, d.width, hh, b.x - b.r + 3, b.y - b.r + 3 + d.height - hh, d.width, hh);
-      c.globalAlpha = 1; text(c, CHARS[me.ch].ability, b.x, b.y - 7, '#fff', { align: 0.5 });
-      text(c, ready ? 'GO!' : Math.ceil(me.abil), b.x, b.y + 3, ready ? '#fff' : '#ccd', { align: 0.5 });
+      c.globalAlpha = 1; text(c, A, b.x, b.y - (live ? 7 : 3), live ? '#fff' : '#99a', { align: 0.5 });
+      if (live) text(c, ready ? 'GO!' : Math.ceil(me.abil), b.x, b.y + 3, ready ? '#fff' : '#ccd', { align: 0.5 });
     }
     b = L.pause; if (!b) return;   // only P1's half carries the pause button
-    panel(c, b.x, b.y, b.w, b.h, 0.5); c.fillStyle = '#ccd'; c.fillRect(b.x + 6, b.y + 4, 3, b.h - 8); c.fillRect(b.x + b.w - 9, b.y + 4, 3, b.h - 8);
+    const g = Math.min((b.w >> 1) - 9, Math.max(3, (b.h - 8) >> 1)), bx = b.x + (b.w >> 1);   // bars no further apart than they are tall (the split-screen button can be flat)
+    panel(c, b.x, b.y, b.w, b.h, 0.5); c.fillStyle = '#ccd'; c.fillRect(bx - g - 3, b.y + 4, 3, b.h - 8); c.fillRect(bx + g, b.y + 4, 3, b.h - 8);
   };
 
   R.clear = function () { cx.fillStyle = '#120e1c'; cx.fillRect(0, 0, R.W, R.H); };
