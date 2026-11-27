@@ -80,8 +80,8 @@
       ['FART: TOXIC CLOUD, KILLS ANY OTHER WORM.  PUKE: STICKY PUDDLE, STUCK 10 SEC.', '#d7e84a'],
       ['PHONE: LEFT THUMB MOVES. RIGHT THUMB AIMS AND SHOOTS. BOOST + ABILITY BUTTONS.', '#9be7ff'],
       ['KEYBOARD: WASD OR ARROWS MOVE. MOUSE AIMS, CLICK SHOOTS (OR SPACE).', '#9be7ff'],
-      ['          SHIFT BOOSTS. E USES YOUR ABILITY. ESC PAUSES.', '#9be7ff'],
-      ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY.', '#9be7ff'],
+      ['          SHIFT BOOSTS. E USES YOUR ABILITY. T TAUNTS. ESC PAUSES.', '#9be7ff'],
+      ['CONTROLLER: LEFT STICK MOVE. RIGHT STICK AIM + SHOOT. A OR LT BOOST. X ABILITY. B TAUNT.', '#9be7ff'],
       ['2 PLAYERS: EACH HALF OF THE SCREEN HAS ITS OWN TOUCH CONTROLS.', '#ffb0a8'],
       ['           OR P1 WASD+MOUSE, P2 CONTROLLER OR ARROWS, ENTER, SHIFT, PERIOD.', '#ffb0a8'],
       ['ONLINE: ONE DEVICE HOSTS AND SHARES THE 4 LETTER ROOM CODE. UP TO 4 PLAYERS.', '#ffb0a8']
@@ -295,6 +295,11 @@
       case 'shroom': fx.text(x, y - 12, 'WHOA!', '#ff7eb6'); if (e[4]) fx.text(x, y - 22, CHARS[(wormOf(e[3]) || { ch: 0 }).ch].ability + ' -' + e[4] + 'S', '#d9ff7a'); fx.burst(x, y, ['#ff7eb6', '#4cc9f0', '#ffd23f'], 12, 70, 0.6, 2); if (mine(e[3])) { Snd.tone(300, 0.6, 'sine', 0.14, 900); Snd.tone(450, 0.6, 'sine', 0.1, 150, 0.1); } break;
       case 'ammo': fx.text(x, y - 12, '+AMMO', '#ffd23f'); if (mine(e[3])) { Snd.tone(660, 0.07, 'square', 0.1); Snd.tone(990, 0.1, 'square', 0.1, 0, 0.07); } break;
       case 'dry': if (mine(e[3]) && gate('dry', 200)) Snd.tone(1200, 0.03, 'square', 0.06); break;
+      // bumping into another worm: sparks, a thud that rises as time runs out, and a warning for the player it is happening to
+      case 'bump': fx.burst(x, y, ['#fff', '#ff5a4d', '#ffd23f'], 4, 90, 0.25, 2);
+        if (mine(e[3])) { for (const l of App.locals) if (l.me && l.me.id === e[3]) { l.view.warn = 0.22; l.view.shake = Math.max(l.view.shake, 0.08); } if (gate('bump', 90)) { Snd.tone(140 + e[4] * 3, 0.09, 'sawtooth', 0.16, 70); Snd.noise(0.05, 0.14, 900); } }
+        else if (vol && gate('bump2', 120)) Snd.tone(120, 0.06, 'square', 0.05 * vol, 60);
+        break;
       // ---- power-ups, special guns, golden burger ----
       case 'drop': if (!demo && vol && gate('drop', 300)) { Snd.tone(1320, 0.12, 'sine', 0.06 * vol); Snd.tone(1760, 0.2, 'sine', 0.05 * vol, 0, 0.1); } break;   // something turned up nearby
       case 'power': {
@@ -358,7 +363,7 @@
     if (In.pausePressed) { In.pausePressed = false; setPause(!App.paused); }
     const frozen = App.paused && !Net.role;
     for (const l of App.locals) {
-      const o = App.paused || App.screen === 'results' ? { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false } : In.read(l.dev, l.view);
+      const o = App.paused || App.screen === 'results' ? { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false, tap: false, pause: false, taunt: false } : In.read(l.dev, l.view);
       if (o.pause) { setPause(true); }
       let p;
       if (client) {
@@ -394,6 +399,7 @@
         }
       }
       if (v.banner && v.banner.t > 0 && !frozen) v.banner.t -= dt;
+      if (v.warn > 0) v.warn -= dt;
       let sx = 0, sy = 0; if (v.shake > 0) { v.shake -= dt; sx = (Math.random() - 0.5) * 10 * v.shake / 0.3; sy = (Math.random() - 0.5) * 10 * v.shake / 0.3; }
       v.meId = me ? me.id : 0; v.cam.x += sx; v.cam.y += sy; R.drawView(v, G, t); if (me) { v.px += me.x - v.cam.x; v.py += me.y - v.cam.y; } v.cam.x -= sx; v.cam.y -= sy;
       // P1 (and solo) follow In.lastKind; P2's touch controls show unless P2 is on a controller or the keyboard
@@ -402,7 +408,7 @@
     }
     if (App.locals.length > 1) R.divider(App.locals[1].view.x);
     if (App.previews.length) drawPreviews();
-    for (const l of App.locals) if (l.useTouch) R.drawTouch((In.tpads || [In.touch])[l.dev.tpad || 0] || In.touch, l.me, t, CHARS[l.ch]);
+    for (const l of App.locals) if (l.useTouch) R.drawTouch(In.tpads[l.dev.tpad || 0], l.me, t, CHARS[l.ch]);
   }
   // step the authoritative sim, play its events, feed the network
   function advance(dt, maxSteps, silent) {
@@ -429,7 +435,7 @@
     for (const p of App.previews) {
       const c = p.c.getContext('2d'); c.clearRect(0, 0, 100, 38); const C = CHARS[p.ch], pts = [];
       for (let i = 0; i < 15; i++) pts.push({ x: 76 - i * 6, y: 21 + Math.sin(App.t * 5 - i * 0.55) * (i === 0 ? 1 : 2.5) });
-      R.drawWormPreview(c, { id: p.ch, ch: p.ch, variant: p.variant, x: pts[0].x, y: pts[0].y, ang: 0, aim: Math.sin(App.t * 1.5 + p.ch) * 0.5, pts, r: C.baseR, mass: C.startMass, alive: true, shield: 0, stuck: 0, slow: 0, boosting: false }, App.t);
+      R.drawWormPreview(c, { id: p.ch, ch: p.ch, variant: p.variant, x: pts[0].x, y: pts[0].y, ang: 0, aim: Math.sin(App.t * 1.5 + p.ch) * 0.5, pts, r: C.baseR, mass: C.startMass, alive: true, shield: 0, stuck: 0, slow: 0, boosting: false, noName: true }, App.t);
     }
   }
   const demoView = { x: 0, y: 0, w: 1, h: 1, cam: App.demoCam, trip: 0, slow: 0 };

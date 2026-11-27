@@ -73,6 +73,25 @@ try:
     r = J(t, """(()=>{const {s,w}=PT.mk([1]),a=w[0];PT.place(a,PT.spot.x,PT.spot.y,0);a.rage=0.5;const ev=PT.run(s,1);return {rage:a.rage,off:PT.evs(ev,'poweroff').map(e=>e[4])}})()""")
     ok(r["rage"] <= 0 and r["off"] == [0], "rampage runs out and says so", r)
 
+    # ---------- bumping: a crash is not instant ----------
+    BUMP = """(()=>{const {s,w}=PT.mk([%d,1]),a=w[0],v=w[1],sp=PT.spot,T=HW.CFG.CRASH_T;PT.place(v,sp.x+150,sp.y-60,Math.PI/2,80);v.stuck=99;PT.place(a,sp.x+%d,sp.y-%d,%s,40);a.inp.mx=Math.cos(a.ang);a.inp.my=Math.sin(a.ang);
+      let first=-1,died=-1,bumps=0,side=1,minx=1e9,turned=false;const bx=sp.x+150;
+      for(let i=0;i<60*%s;i++){s.step(1/60);for(const e of PT.flush(s)){if(e[0]==='bump'&&e[3]===a.id){bumps++;if(first<0)first=i/60}if(e[0]==='die'&&e[3]===a.id&&died<0)died=i/60}
+        if(a.alive&&a.x>bx+2)side=-1;
+        if(first>=0&&!turned&&i/60-first>=%s){turned=true;a.inp.mx=-1;a.inp.my=0}}
+      return {T,first,died,wait:died<0?-1:died-first,bumps,alive:a.alive,through:side<0,crash:a.crash}})()"""
+    r = J(t, BUMP % (1, 40, 150, "0", "2.5", "99"))
+    ok(r["first"] >= 0 and r["died"] > 0 and abs(r["wait"] - r["T"]) < 0.06 and r["bumps"] >= 2 and not r["through"], "crash: square on, you bump first and die only after the grace time", r)
+    r = J(t, BUMP % (1, 40, 150, "0", "2.5", "0.04"))
+    ok(r["first"] >= 0 and r["alive"] and not r["through"] and r["crash"] == 0, "crash: turn away in time and you live (big, slow worm)", r)
+    r = J(t, BUMP % (2, 40, 150, "0", "2.5", "0.15"))
+    ok(r["alive"] and not r["through"], "crash: turn away in time and you live (small, quick worm)", r)
+    r = J(t, BUMP % (1, 132, 280, "Math.PI/2-0.12", "1.3", "99"))
+    ok(r["first"] >= 0 and r["alive"] and not r["through"], "crash: sliding along a body for a moment is only a scrape", r)
+    r = J(t, """(()=>{const {s,w}=PT.mk([1,1]),a=w[0],v=w[1],sp=PT.spot;PT.place(v,sp.x+150,sp.y-60,Math.PI/2,80);v.stuck=99;PT.place(a,sp.x+60,sp.y-150,0,40);a.inp.mx=1;a.rage=5;
+      let t0=-1,t1=-1;for(let i=0;i<120;i++){s.step(1/60);for(const e of PT.flush(s)){if(e[0]==='die'&&t1<0)t1=i}const d=Math.abs(a.x-v.x);if(t0<0&&d<a.r+v.r)t0=i}return {t0,t1,valive:v.alive}})()""")
+    ok(not r["valive"] and r["t1"] - r["t0"] <= 2, "rampage: no waiting, the worm you hit dies on contact", r)
+
     # ---------- supersize ----------
     r = J(t, """(()=>{const {s,w}=PT.mk([1,3]),a=w[0],sh=w[1],sp=PT.spot;PT.place(a,sp.x,sp.y,0,60);const r0=a.r,m0=a.mass;s.addItem('p',1,a.x+4,a.y,0);PT.run(s,0.1);
       const big={r:a.r,mass:a.mass,t:a.big};
@@ -204,6 +223,13 @@ try:
     for i in range(5):
         t.eval("(()=>{const m=HW.App.locals[0].me;if(!m)return;m.shield=5;m.sg=%d;m.sgT=5;m.rage=%d;m.guard=%d;m.big=%d;m.sauce=%d;m.chill=%d;HW.App.locals[0].player.inp.taunt=true})()" % (i + 1, 5 * (i == 0), 5 * (i == 1), 5 * (i == 2), 5 * (i == 3), 3 * (i == 4)))
         t.touch("touchStart", [(2, 650, 250)]); t.touch("touchMove", [(2, 700, 240)]); t.pump(0.8); t.shot(SP + "/pw_gun%d.png" % i); t.touch("touchEnd", [])
+    # the taunt button (a real tap), the T key
+    t.eval("(()=>{window.__ta=0;const s=HW.App.sim,st=s.step;s.step=function(d){const r=st.call(this,d);for(const e of this.S.events)if(e[0]==='taunt'&&HW.App.locals[0].me&&e[3]===HW.App.locals[0].me.id)__ta++;return r};const m=HW.App.locals[0].me;if(m){m.shield=30;m.tauntT=0}})()")
+    Lt = J(t, "HW.Input.touch.layout.taunt"); k = t.eval("HW.Render.canvas.getBoundingClientRect().width/HW.Render.W")
+    ok(Lt["r"] * 2 * k >= 43.5, "touch: taunt button is at least 44 CSS px", Lt["r"] * 2 * k)
+    t.touch("touchStart", [(5, Lt["x"] * k, Lt["y"] * k)]); t.pump(0.3); t.touch("touchEnd", []); t.pump(0.3); t.shot(SP + "/pw_taunt.png")
+    ok(t.eval("__ta") == 1 and J(t, "!!(HW.App.locals[0].me&&HW.App.locals[0].me._say)"), "touch: tapping the taunt button taunts once and shows a speech bubble", t.eval("__ta"))
+    ok(J(t, "(()=>{const T=HW.Input.touch;return T.move.on||T.aim.on})()") is False, "touch: the taunt tap did not start a stick")
     t.eval("HW.App.sim.S.match.t=60.4"); t.pump(1.0); t.shot(SP + "/pw_frenzy.png")
     ok(J(t, "HW.App.sim.S.match.frenzy") is True and J(t, "!!(HW.App.locals[0].view.banner&&HW.App.locals[0].view.banner.s.indexOf('FRENZY')>=0)"), "in game: the frenzy banner shows")
     t.eval("(()=>{const S=HW.App.sim.S;S.comps[0].st.veg=3;S.match.t=0.2})()"); t.pump(1.2); t.shot(SP + "/pw_results.png")

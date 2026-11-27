@@ -8,6 +8,7 @@
     MATCH_T: 300, LIVES: 3, KILL_PTS: 20, ABIL_CD: 60, ABIL_START: 20, ZONE_T: 10, STUCK_T: 10,
     FART_R: 76, PUKE_R: 68, SLOW_T: 4.5, SLOW_MULT: 0.5, VEG_LOSS: 0.1, TRIP_T: 10, MAX_PLAYERS: 4,
     VEG_ABIL: 10, SHROOM_ABIL: 15,   // the upside of eating your greens: seconds knocked off the fart / puke countdown
+    CRASH_T: 0.4,                    // seconds you must keep driving into another worm before it kills you (see "head vs body" in step)
     BIG: 3              // food worth this much or more is drawn double size
   };
   // what a snack / meal / feast is worth (FOOD[].v in sprites.js is the class: 1, 2 or 3)
@@ -236,6 +237,7 @@
       mass: C.startMass, pts: [], r: C.baseR, alive: true, shield: CFG.SHIELD, ammo: C.gun.start, cd: 1, // cd 1: no shot (and so no lost shield) in the first second, even with fire held
       abil: C.ability ? CFG.ABIL_START : 0, stuck: 0, pukeImm: 0, slow: 0, trip: 0, boosting: false, boostAcc: 0, kills: 0,
       rage: 0, big: 0, guard: 0, sauce: 0, chill: 0, sg: 0, sgT: 0, streak: 0, tauntT: 0,   // power-ups, special gun, kill streak
+      crash: 0, bumpT: 0,   // how long this head has been pushing into another worm; time to the next bump effect
       mercy: pid >= 0 ? CFG.SHIELD + HW.DIFFS[S.diff].mercy : 0,   // bots leave a freshly spawned human alone for this long (see bots.js)
       inp: { mx: 0, my: 0, ax: 0, ay: 0, fire: false, boost: false, abil: false, auto: false }, bot: null
     };
@@ -571,20 +573,44 @@
       if (n === 0) for (const it of S.items.values()) { if (it.k === 'f') { this.remItem(it); if (++n > 20) break; } }
     }
 
-    // head vs body. Every touch is collected first and judged afterwards, so the outcome never
-    // depends on the order worms happen to be stored in.
+    // head vs body. Touching another worm is a BUMP, not instant death: the head is held at the surface
+    // (it cannot pass through) and only a worm that keeps driving in for CFG.CRASH_T dies, so there is
+    // a clear moment of impact and time to wrench the wheel round. A glancing scrape counts for less
+    // than a square hit, and the count runs back down once you are clear.
+    // Every touch is collected first and judged afterwards, so the outcome never depends on the order
+    // worms happen to be stored in.
     const touch = this.touch || (this.touch = []); touch.length = 0;
     for (const a of S.worms) {
-      if (!a.alive || a.shield > 0) continue;
+      if (!a.alive) continue; a.hold = false; if (a.bumpT > 0) a.bumpT -= dt;
+      if (a.shield > 0) { a.crash = 0; continue; }
+      let wb = null, wi = -1, wq = 0, wc = 0, deep = 1e9;
       for (const b of S.worms) {
         if (b === a || !b.alive || b.shield > 0) continue;
         const m = a.r + b.r;
         if (a.x < b.bx0 - m || a.x > b.bx1 + m || a.y < b.by0 - m || a.y > b.by1 + m) continue;
         // the part of b that a's head is closest to decides what was hit: b's head (0) or its body
-        const p = b.pts; let hit = -1, hq = (a.r * 0.7 + b.r * 0.78) ** 2;   // a graze is forgiven: the circles must really overlap
+        const cd = a.r * 0.7 + b.r * 0.78, p = b.pts; let hit = -1, hq = cd * cd;   // a graze is forgiven: the circles must really overlap
         for (let i = 0; i < p.length; i++) { const dx = p[i].x - a.x, dy = p[i].y - a.y, q = dx * dx + dy * dy; if (q < hq) { hq = q; hit = i; } }
-        if (hit >= 0) touch.push(a, b, hit);
+        if (hit < 0) continue;
+        if (a.rage > 0 && !(b.rage > 0)) { touch.push(a, b, hit); continue; }   // a rampage does not wait: it goes straight through them
+        const d = Math.sqrt(hq) - cd; if (d < deep) { deep = d; wb = b; wi = hit; wq = hq; wc = cd; }   // deepest contact decides
       }
+      if (!wb) { if (a.crash > 0) a.crash = Math.max(0, a.crash - dt * 2); continue; }
+      const q = wb.pts[wi], d = Math.sqrt(wq) || 0.01, ux = (q.x - a.x) / d, uy = (q.y - a.y) / d;
+      const into = Math.cos(a.ang) * ux + Math.sin(a.ang) * uy;   // 1 = square on, 0 = sliding along it
+      // The count runs at full speed square on and falls away fast as you turn off (cosine squared), so a
+      // quick worm that reacts can wrench itself clear of even a square hit, and an oblique one is easy.
+      a.crash += dt * Math.max(0.1, into > 0 ? into * into : 0);
+      a.hold = true; a.hx = q.x - ux * (wc + 0.5); a.hy = q.y - uy * (wc + 0.5);
+      if (a.bumpT <= 0) { a.bumpT = 0.1; this.ev('bump', a.x + ux * a.r, a.y + uy * a.r, a.id, Math.min(100, Math.round(a.crash / CFG.CRASH_T * 100))); }
+      if (a.crash >= CFG.CRASH_T) touch.push(a, wb, wi);
+    }
+    // hold the bumping heads at the surface (after all the tests, so nobody's test saw a moved head)
+    for (const a of S.worms) {
+      if (!a.hold || !a.alive) continue;
+      a.x = clamp(a.hx, a.r, CFG.W - a.r); a.y = clamp(a.hy, a.r, CFG.H - a.r);
+      if (MAP.push(a.x, a.y, a.r, PT)) { a.x = clamp(PT.x, a.r, CFG.W - a.r); a.y = clamp(PT.y, a.r, CFG.H - a.r); }
+      a.pts[0].x = a.x; a.pts[0].y = a.y;
     }
     if (touch.length) {
       const dead = [];
